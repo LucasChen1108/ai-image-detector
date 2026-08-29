@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 
 from data.datasets import ManifestDataset
 from models.detector import HybridDetector
+from train import get_clip_norm_stats, to_raw_rgb01
 
 ROBUSTNESS_CONDITIONS = [
     "clean", "jpeg_q90", "jpeg_q70", "jpeg_q50", "jpeg_q30",
@@ -31,15 +32,25 @@ ROBUSTNESS_CONDITIONS = [
 ]
 
 
-def eval_condition(model, manifest_csv, condition, preprocess, device, batch_size):
+def eval_condition(
+    model,
+    manifest_csv,
+    condition,
+    preprocess,
+    clip_mean,
+    clip_std,
+    device,
+    batch_size,
+):
     ds = ManifestDataset(manifest_csv, split=condition, preprocess=preprocess)
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
     probs, labels = [], []
     model.eval()
     with torch.no_grad():
         for batch in loader:
-            img = batch["image"].to(device)
-            p = model.predict_proba(img, img)
+            clip_img = batch["image"].to(device)
+            raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
+            p = model.predict_proba(clip_img, raw_img)
             probs.extend(p.cpu().tolist())
             labels.extend(batch["label"].tolist())
     auc = roc_auc_score(labels, probs)
@@ -67,13 +78,14 @@ def main():
         clip_pretrained=cfg["model"]["clip_pretrained"],
     ).to(device)
     model.load_state_dict(torch.load(args.checkpoint, map_location=device))
+    clip_mean, clip_std = get_clip_norm_stats(model.semantic.preprocess)
 
     results = {}
     for cond in ROBUSTNESS_CONDITIONS + ["unseen_generator"]:
         try:
             auc, acc, _, _ = eval_condition(
-                model, args.manifest, cond, model.semantic.preprocess, device,
-                cfg["train"]["batch_size"],
+                model, args.manifest, cond, model.semantic.preprocess, clip_mean,
+                clip_std, device, cfg["train"]["batch_size"],
             )
             results[cond] = {"auc": auc, "acc": acc}
         except (FileNotFoundError, KeyError, ValueError) as e:
