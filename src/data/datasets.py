@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import pandas as pd
+import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
@@ -59,7 +60,13 @@ class ManifestDataset(Dataset):
         tensor = self.preprocess(img)
         return {
             "image": tensor,
-            "label": float(row["label"]),
+            # Explicit float32, not a bare Python float: PyTorch's default
+            # batch collate promotes a list of Python floats to float64
+            # ("double"), and Apple's MPS backend cannot move a float64
+            # tensor onto the GPU at all (`.to("mps")` raises TypeError).
+            # This bites both train.py and calibrate.py, which is why it's
+            # fixed here once rather than patched in each consumer.
+            "label": torch.tensor(row["label"], dtype=torch.float32),
             "generator": str(row["generator"]),
         }
 
