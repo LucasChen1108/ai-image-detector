@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
-# Dataset acquisition — FILL IN before Day 1 data work.
+# Dataset acquisition — one command, run from the repo root.
 #
-# Competition rules require public/licensed datasets only (no proprietary or
-# production data, no test-label training). The brief names WildFake, CIFAKE,
-# and SID_Set as example approved sources. Recommended split for this repo:
+#   bash scripts/download_data.sh
 #
-#   TRAIN (primary):  WildFake   — large multi-generator (GAN + diffusion)
-#                      corpus, built specifically for cross-generator
-#                      robustness research. Gives the model varied fingerprints
-#                      to learn from instead of overfitting one generator family.
-#   FAST SANITY CHECK: CIFAKE    — small, low-res, single-generator (Stable
-#                      Diffusion vs CIFAR-10 real). Use ONLY on Day 1 to verify
-#                      the full pipeline runs end-to-end in minutes, before
-#                      committing hours to the full WildFake run.
-#   HELD-OUT EVAL:     SID_Set   — kept OUT of training entirely, used only
-#                      as the "unseen_generator" condition in evaluate.py.
-#                      This is what makes the cross-generator number honest —
-#                      if you train on it too, that AUC stops meaning anything.
+# Pulls the exact images listed in manifest/data_spec.csv and writes
+# manifest/manifest.csv. Everyone on the team ends up with byte-identical
+# data because the spec pins each image and records its sha256.
 #
-# 1. Download each dataset per its official license terms (fill in the actual
-#    URLs/instructions your team finds — do not commit raw data to git,
-#    see .gitignore).
-# 2. Point each dataset at data/<name>/real/ and data/<name>/fake/ (or your
-#    own layout).
-# 3. Build a manifest per dataset with src/data/datasets.py::make_manifest_from_folders,
-#    then concatenate into data/manifest.csv with a `generator` column set
-#    correctly per source (real images always generator="real").
-
+# WildFake is 1.29 TB and its download unit is a whole archive, so a normal
+# clone or `git lfs pull` is not viable. We instead read each archive's index
+# remotely and fetch only the members we need over HTTP range requests —
+# under 1 GB total, no ModelScope account required. See
+# scripts/wildfake_remote.py for the mechanism.
+#
+# Competition rules require public/licensed datasets and reproducible
+# acquisition scripts (docs/PLAN.md §6). WildFake is Apache-2.0; nothing is
+# redistributed here — this fetches from the official source.
 set -e
-echo "TODO: fill in official dataset download commands here."
-echo "See comments at the top of this file for the train/sanity/eval split plan."
+cd "$(dirname "$0")/.."
+
+echo "==> Fetching both datasets (~125 MB total):"
+echo "      WildFake  4200 imgs - 3 generators x 700 + 3 matched real sources x 700"
+echo "                           -> train / val / test"
+echo "      SID_Set    500 imgs - 250 real + 250 synthetic, split=heldout"
+echo "                           -> unseen-generator eval only, never trained on"
+python3 scripts/fetch_dataset.py
+
+echo
+echo "==> Done. Sanity-check the result:"
+python3 - <<'PY'
+import pandas as pd
+df = pd.read_csv("manifest/manifest.csv")
+print(pd.crosstab([df["split"]], [df["label"], df["domain"]]))
+print(f"\n{len(df)} rows -> manifest/manifest.csv")
+PY
+
+echo
+echo "Next: point configs/baseline_clip.yaml at manifest/manifest.csv, then"
+echo "  bash run.sh train"
