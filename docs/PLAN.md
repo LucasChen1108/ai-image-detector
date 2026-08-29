@@ -123,3 +123,4 @@ This scaffold has been generated locally at `ai-image-detector/` inside your Tec
    ```
 4. Add your 3 teammates as collaborators (repo Settings → Collaborators), or have them fork+PR if you prefer that workflow.
 5. Everyone clones and works from feature branches (`git checkout -b track-a-data`, etc.), PRs into `main` — with 3 days, keep review fast and don't block on it; a quick Slack/Discord "pushed X, reviewing now" beats a formal PR process here.
+
