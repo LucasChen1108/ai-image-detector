@@ -12,7 +12,6 @@ import torch.nn as nn
 import yaml
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
-from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
 from data.augmentations import build_train_transform
@@ -20,14 +19,30 @@ from data.datasets import ManifestDataset
 from models.detector import HybridDetector
 
 
-def to_raw_rgb01(pil_batch_tensor):
-    """The dataset's `preprocess` from open_clip already resizes+normalizes
-    for CLIP. The frequency branch instead wants plain [0,1] RGB, so the
-    dataset returns the CLIP-preprocessed tensor and we separately recompute
-    a [0,1] view here by un-normalizing using CLIP's known mean/std.
-    Simpler alternative used here: dataset stores PIL->ToTensor() output
-    alongside the CLIP tensor. See datasets.py note if you extend this."""
-    return pil_batch_tensor
+def get_clip_norm_stats(preprocess):
+    """Pull CLIP's actual mean/std out of its own preprocess pipeline rather
+    than hardcoding OpenAI's constants — different pretrained checkpoints
+    (e.g. laion2b vs openai) can use different normalization stats, so this
+    stays correct regardless of what configs/baseline_clip.yaml selects."""
+    for t in preprocess.transforms:
+        if hasattr(t, "mean") and hasattr(t, "std"):
+            mean = torch.tensor(t.mean).view(1, 3, 1, 1)
+            std = torch.tensor(t.std).view(1, 3, 1, 1)
+            return mean, std
+    raise ValueError("Could not find a Normalize transform in CLIP preprocess")
+
+
+def to_raw_rgb01(clip_tensor: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+    """Invert CLIP's normalization to recover an approximate [0,1] RGB image
+    from the CLIP-preprocessed tensor. This is what the frequency branch
+    needs (it computes an FFT over raw pixel statistics, not CLIP-normalized
+    values) without requiring ManifestDataset to return two separate tensors
+    per sample. Bonus: both branches then see exactly the same resize/crop,
+    which keeps pixel-domain and frequency-domain statistics aligned (the
+    DDA insight from the brief)."""
+    mean = mean.to(clip_tensor.device)
+    std = std.to(clip_tensor.device)
+    return (clip_tensor * std + mean).clamp(0.0, 1.0)
 
 
 def main():
@@ -48,18 +63,14 @@ def main():
     ).to(device)
 
     preprocess = model.semantic.preprocess
+    clip_mean, clip_std = get_clip_norm_stats(preprocess)
     train_aug = build_train_transform(cfg["data"]["image_size"])
 
-    def clip_and_raw(img):
-        img = train_aug(img) if cfg["data"].get("apply_train_aug", True) else img
-        clip_tensor = preprocess(img)
-        raw_tensor = ToTensor()(img.resize((cfg["data"]["image_size"],) * 2))
-        return clip_tensor, raw_tensor
-
-    # NOTE: ManifestDataset currently returns a single "image" tensor via
-    # `preprocess`. For the two-branch model, swap `preprocess=clip_and_raw`
-    # and adapt __getitem__ to return both tensors — left as a Day-1 wiring
-    # task for whoever owns training (see docs/ROLES.md, Track B).
+    # Dual-tensor wiring fixed: raw_img is now reconstructed from clip_img via
+    # to_raw_rgb01() above (see that docstring) rather than needing
+    # ManifestDataset to return two tensors. NOTE: evaluate.py / calibrate.py
+    # currently have the same img,img placeholder pattern as this file did —
+    # they need the same fix before real robustness numbers are trustworthy.
     train_ds = ManifestDataset(cfg["data"]["manifest_csv"], "train", preprocess, train_aug)
     val_ds = ManifestDataset(cfg["data"]["manifest_csv"], "val", preprocess, None)
 
@@ -83,7 +94,7 @@ def main():
         pbar = tqdm(train_loader, desc=f"epoch {epoch}")
         for batch in pbar:
             clip_img = batch["image"].to(device)
-            raw_img = batch["image"].to(device)  # placeholder: see clip_and_raw note above
+            raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
             labels = batch["label"].to(device)
 
             logit = model(clip_img, raw_img)
@@ -100,7 +111,7 @@ def main():
         with torch.no_grad():
             for batch in val_loader:
                 clip_img = batch["image"].to(device)
-                raw_img = batch["image"].to(device)
+                raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
                 probs = model.predict_proba(clip_img, raw_img)
                 all_probs.extend(probs.cpu().tolist())
                 all_labels.extend(batch["label"].tolist())
