@@ -81,32 +81,26 @@ Deliverable per the brief: a compact robustness table + an error-analysis note �
 - Not a direct replication of a single existing paper/model — the two-branch CLIP+FFT fusion with learned temperature calibration is our own combination, citing SAFE/DDA as *inspiration* for augmentation strategy, not as an architecture to copy ✓
 - Submission = public GitHub repo + run script (`run.sh`) + Devpost description + 2–4 min YouTube demo — tracked in §8 below
 
-## 7. Three-day timeline (4 people)
+## 7. One-day compressed timeline (4 people)
 
-### Day 1 — Sat Aug 29: Pipeline stands up end-to-end
-All 4 work the core pipeline together; sub-tasks below are what each of you starts on, but nobody is siloed — check in with whoever's blocking you rather than working around it.
+Superseded the original 3-day plan — full sprint in a single day. Hour markers are relative to whenever you actually start (`Hour 0`); anchor that against your real deadline and compress/stretch the buffer at the end accordingly, not the middle. This scope is deliberately smaller than the 3-day version: a WildFake **subset** across 3-4 generators (not the full corpus), one training run (no hyperparameter search, no CLIP-vs-hybrid ablation), and a smaller robustness test slice. Note the cuts explicitly in the Devpost write-up as "future work" — judges read a scoped-and-honest MVP better than an overreaching one that broke at the end.
 
-- **Track A (Data/Aug):** Get WildFake + CIFAKE + SID_Set downloaded and licensed correctly; build `manifest.csv` via `make_manifest_from_folders`; verify `augmentations.py` transforms visually on a handful of samples.
-- **Track B (Model/Training):** Wire up `ClipSemanticBranch` + `FrequencyBranch` + `HybridDetector`; fix the `clip_and_raw` dual-tensor TODO in `src/train.py` (dataset currently returns one tensor — needs both the CLIP-preprocessed and raw-[0,1] tensors per sample); get one training epoch running on CIFAKE as a smoke test.
-- **Track C (Eval):** Stand up `evaluate.py` against dummy/CIFAKE data to confirm the AUC table and Final Score formula compute correctly before real numbers matter.
-- **Track D (Repo/Infra):** This scaffold (done) → push to GitHub (see §8), set up a shared results doc, confirm everyone can run `bash run.sh train` locally.
+| Hours | Track A (Data/Aug) | Track B (Model/Training) | Track C (Robustness/Eval) | Track D (Repo/Infra/Demo) |
+|---|---|---|---|---|
+| 0–1 | All 4: confirm repo cloned, `pip install -r requirements.txt` runs, `bash run.sh` reachable, tracks confirmed | | | |
+| 0–2 | Download CIFAKE (full, it's small) + a WildFake **subset**: pick 3-4 generator subfolders, cap ~1.5-2.5k images/class; download a small SID_Set slice (a few hundred images) kept completely separate | Fix the dual-tensor TODO (`train.py`/`datasets.py` need to return both the CLIP-preprocessed tensor and a raw `[0,1]` tensor per sample) | Idle until checkpoint 1 — read `evaluate.py` / `EVAL_CONDITIONS` to be ready | Push repo, add 3 collaborators, draft README/Devpost skeleton from `docs/PLAN.md`, pick demo example shots |
+| 2–3 | Build `manifest.csv` (real/subset-fake/generator column correct); hand off | **Checkpoint 1:** smoke-test 1 epoch on CIFAKE — pipeline runs end to end, val AUC prints | Stand up `build_robustness_testset.py` + `evaluate.py` against the CIFAKE smoke-test checkpoint to catch bugs in the eval code before real numbers matter | Set up screen recording tool, outline demo script (real→correct, fake→correct, fake+JPEG/blur→still caught, one honest failure case) |
+| 3–6 | Verify SID_Set slice manifest rows are present, correctly labeled, and **excluded** from every train/val split | Real training run on the WildFake subset with augmentation on (target ~5-8 epochs depending on compute); save best checkpoint by val AUC | Idle/on-call for Track B; help debug if training stalls | Continue README/Devpost draft; nothing to demo yet |
+| 6 | | **Checkpoint 2:** best checkpoint saved, handed to Track C | | |
+| 6–7 | Free — help with error analysis | `calibrate.py` (temperature scaling on val set) | `build_robustness_testset.py` on the (smaller) held-out test slice → `evaluate.py` → real robustness table + Final Score | Keep repo/README in sync as real numbers land |
+| 7–8 | Inspect false positives/negatives together — write the error-analysis note (2-3 concrete failure examples + a one-line hypothesis each), lock `docs/robustness_results.json` | | | |
+| 8–9 | All 4: repo cleanup (resolve/remove leftover TODOs, confirm `run.sh` works top-to-bottom on a **fresh clone**), tag a release commit, run the §6 compliance checklist | | | |
+| 8–10 | | | | Record the 2-4 min demo video per the script above; edit/trim |
+| 9–10 | | | | Write the Devpost description: architecture, real results table, trade-offs (§5, reuse it), explicit "what we cut for time / would add next" section |
+| 10–11 | **Buffer.** Fix whatever broke in the fresh-clone test, re-render demo audio/captions if needed, don't start anything new here | | | |
+| 11 | **Submit:** public repo confirmed, `run.sh` tested clean, Devpost live, demo video uploaded — with margin before the deadline, not at it | | | |
 
-**End of Day 1 goal:** `bash run.sh train` completes an epoch on real (even if small) data and prints a val AUC.
-
-### Day 2 — Sun Aug 30: Real training + robustness
-- **Track A:** Finalize the full WildFake training manifest; hold SID_Set out completely; sanity-check the `generator` column is populated correctly (this is what makes cross-generator eval possible).
-- **Track B:** Full training run on WildFake with augmentation on; save best checkpoint; run `calibrate.py`.
-- **Track C:** Run `build_robustness_testset.py` on the held-out test split; run full `evaluate.py`; get the real robustness table and Final Score; start drafting the error-analysis note (which conditions/generators fail, and a hypothesis why).
-- **Track D:** Ablation if time allows — CLIP-only vs. hybrid, augmentation on/off — feeds directly into the "how senior engineers think: trade-offs" section of the write-up. Keep the repo's README/PLAN in sync with whatever actually shipped.
-
-**End of Day 2 goal:** Full robustness table with real numbers, checkpoint saved, error-analysis draft started.
-
-### Day 3 — Mon Aug 31 (buffer into Tue if deadline allows): Polish, demo, submit
-- **All 4:** Finalize error-analysis note and trade-offs write-up (§5 above — reuse it, don't rewrite from scratch).
-- **Track D leads, all review:** Clean repo (remove dead code/TODOs that didn't get resolved, make sure `run.sh` actually runs top-to-bottom on a clean checkout), finalize README, confirm `requirements.txt` is accurate, tag a release commit.
-- **Track C:** Freeze final numbers into `docs/robustness_results.json`, make sure the table in this doc / README matches what's actually reproducible.
-- **All 4:** Write the Devpost description (approach, results table, trade-offs, what we'd do with more time). Script and record the 2–4 min demo video — show: (1) a real image classified correctly, (2) a fake image classified correctly, (3) the same fake surviving JPEG/blur and still being caught, (4) one honest failure case from the error analysis (judges notice teams who show a failure mode they understand vs. teams who only show wins).
-- **Submit:** public repo link + run script confirmed working + Devpost + YouTube demo, before the deadline with buffer for upload/processing time.
+If you're running short by Hour 6 (training not converged / checkpoint missing), the fallback is: ship the CIFAKE-only checkpoint from Checkpoint 1, be upfront about it in the Devpost ("MVP trained on a smaller sanity-check set due to time; full WildFake run is the immediate next step"), and spend the reclaimed hours making the robustness table and error analysis on *that* checkpoint as solid as possible. A smaller, honestly-reported result beats a bigger claim you ran out of time to verify.
 
 ## 8. GitHub repo setup (do this now, Day 1)
 
