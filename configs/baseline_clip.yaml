@@ -4,11 +4,12 @@ model:
   unfreeze_last_n_blocks: 0       # 0 = frozen backbone, linear-probe style
 
 data:
-  # Points at Ngiam's CIFAKE smoke-test manifest for now (Hour ~2-3
-  # pipeline check per docs/PLAN.md). Repoint this at the real WildFake
-  # manifest once that lands — don't tune hyperparameters against a
-  # CIFAKE-only checkpoint, see scripts/build_cifake_manifest.py's caveat.
-  manifest_csv: "manifest/manifest_cifake.csv"
+  # Real training data: WildFake (train/val/test splits) via Ngiam's
+  # scripts/fetch_dataset.py. SID_Set lives in this same manifest under
+  # split="heldout" and is NEVER read here -- ManifestDataset only loads
+  # "train"/"val" (see src/train.py), so it stays untouched by construction
+  # for use as the unseen-generator eval condition in evaluate.py.
+  manifest_csv: "manifest/manifest.csv"
   image_size: 224
   apply_train_aug: true
 
