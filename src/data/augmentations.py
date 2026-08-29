@@ -97,22 +97,33 @@ class RedistributionAugment:
         return img
 
 
-def build_train_transform(image_size: int = 224):
-    """Composed with the augmenter BEFORE resizing/normalizing so corruptions
-    act on full-resolution pixels, matching what happens on a real feed."""
-    redistribution = RedistributionAugment()
-    color_geo = T.Compose([
-        T.RandomApply([T.ColorJitter(0.2, 0.2, 0.2, 0.05)], p=0.5),
-        T.RandomApply([T.RandomRotation(10)], p=0.3),
-        T.RandomHorizontalFlip(p=0.5),
-    ])
+class TrainTransform:
+    """Picklable train-time transform. This MUST be a class, not a closure —
+    DataLoader with num_workers > 0 pickles the whole Dataset (including
+    whatever transform it holds) to ship to worker processes, and Python's
+    pickle cannot serialize a function defined inside another function (no
+    module-level name to look it up by). A class instance pickles fine as
+    long as its attributes do. Composed with the augmenter BEFORE
+    resizing/normalizing so corruptions act on full-resolution pixels,
+    matching what happens on a real feed."""
 
-    def _transform(img: Image.Image):
-        img = redistribution(img)
-        img = color_geo(img)
+    def __init__(self, image_size: int = 224):
+        self.image_size = image_size
+        self.redistribution = RedistributionAugment()
+        self.color_geo = T.Compose([
+            T.RandomApply([T.ColorJitter(0.2, 0.2, 0.2, 0.05)], p=0.5),
+            T.RandomApply([T.RandomRotation(10)], p=0.3),
+            T.RandomHorizontalFlip(p=0.5),
+        ])
+
+    def __call__(self, img: Image.Image) -> Image.Image:
+        img = self.redistribution(img)
+        img = self.color_geo(img)
         return img
 
-    return _transform
+
+def build_train_transform(image_size: int = 224):
+    return TrainTransform(image_size)
 
 
 # Fixed, named conditions for the EVAL-time robustness test set. Keep this in
