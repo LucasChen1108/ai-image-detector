@@ -22,8 +22,16 @@ class ClipSemanticBranch(nn.Module):
     def __init__(self, model_name: str = "ViT-B-32", pretrained: str = "openai",
                  unfreeze_last_n_blocks: int = 0, out_dim: int = 256):
         super().__init__()
+        # OpenAI's original CLIP checkpoints were trained with QuickGELU
+        # (x * sigmoid(1.702x)), not the standard GELU open_clip defaults to.
+        # Loading 'openai' weights without forcing this produces a silent
+        # activation-function mismatch (open_clip warns "QuickGELU mismatch")
+        # that subtly degrades the visual encoder relative to how it was
+        # actually trained. LAION-trained checkpoints (laion2b/laion400m)
+        # use standard GELU and should NOT force this.
+        force_quick_gelu = "openai" in pretrained.lower()
         model, _, preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained
+            model_name, pretrained=pretrained, force_quick_gelu=force_quick_gelu
         )
         self.visual = model.visual
         self.preprocess = preprocess  # hand this to the Dataset
