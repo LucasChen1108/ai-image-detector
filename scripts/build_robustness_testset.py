@@ -10,7 +10,7 @@ byte-for-byte.
 
 Usage:
     python3 scripts/build_robustness_testset.py \
-        --source_manifest data/manifest.csv \
+        --source_manifest manifest/manifest.csv \
         --out_dir data/robustness_testset \
         --out_manifest data/robustness_manifest.csv
 """
@@ -27,7 +27,7 @@ from data.augmentations import EVAL_CONDITIONS  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source_manifest", default="data/manifest.csv")
+    ap.add_argument("--source_manifest", default="manifest/manifest.csv")
     ap.add_argument("--out_dir", default="data/robustness_testset")
     ap.add_argument("--out_manifest", default="data/robustness_manifest.csv")
     args = ap.parse_args()
@@ -52,17 +52,22 @@ def main():
                 "generator": row["generator"], "split": cond_name,
             })
 
-    # unseen_generator: reuse the *original* clean images from a generator
-    # never present in the training split — filter by generator name, not a
-    # transform. Fill in GENERATORS_HELD_OUT to match your data prep.
-    GENERATORS_HELD_OUT = []  # e.g. ["sid_set_diffusion"]
-    if GENERATORS_HELD_OUT:
-        held = df[df["generator"].isin(GENERATORS_HELD_OUT + ["real"])]
-        for _, row in held.iterrows():
-            rows.append({
-                "path": row["path"], "label": row["label"],
-                "generator": row["generator"], "split": "unseen_generator",
-            })
+    # unseen_generator: reuse the *original* clean images from whatever
+    # source the data-prep manifest already held out of training entirely
+    # (fetch_dataset.py tags these rows split="heldout" — SID_Set is the
+    # held-out generator in the current WildFake+SID_Set manifest). We map
+    # that manifest split name to the "unseen_generator" condition name that
+    # evaluate.py looks for, since the two scripts used different vocab for
+    # the same concept.
+    held = df[df["split"] == "heldout"]
+    if held.empty:
+        print("warning: no rows with split=='heldout' in source manifest — "
+              "'unseen_generator' condition will be skipped by evaluate.py")
+    for _, row in held.iterrows():
+        rows.append({
+            "path": row["path"], "label": row["label"],
+            "generator": row["generator"], "split": "unseen_generator",
+        })
 
     out_df = pd.DataFrame(rows)
     out_df.to_csv(args.out_manifest, index=False)
