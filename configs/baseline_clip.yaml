@@ -1,0 +1,17 @@
+model:
+  clip_model_name: "ViT-B-32"     # swap to "ViT-L-14" if compute allows
+  clip_pretrained: "openai"       # public, open-source weights
+  unfreeze_last_n_blocks: 0       # 0 = frozen backbone, linear-probe style
+
+data:
+  manifest_csv: "data/manifest.csv"
+  image_size: 224
+  apply_train_aug: true
+
+train:
+  batch_size: 32
+  epochs: 10
+  lr: 0.0003
+  weight_decay: 0.0001
+  num_workers: 4
+  ckpt_dir: "checkpoints"
