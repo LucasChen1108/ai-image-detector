@@ -30,6 +30,8 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -92,6 +94,45 @@ def needs_fetch(row, write_hashes: bool) -> bool:
     return hashlib.sha256(dest.read_bytes()).hexdigest() != row["sha256"]
 
 
+def fetch_sid(rows, write_hashes, workers):
+    """Fetch SID_Set images by parquet row group.
+
+    Parquet stores columns in per-row-group chunks, so projecting to
+    img_id/image/label skips the `mask` column's bytes entirely — dead weight
+    for us, and about a third of these rows carry one.
+    """
+    done = failed = 0
+    groups = defaultdict(list)
+    for r in rows:
+        groups[(r["archive"], int(r["rowgroup"]))].append(r)
+
+    for (url, rg), items in sorted(groups.items()):
+        head = requests.head(url, allow_redirects=True, timeout=60)
+        size = int(head.headers["content-length"])
+        pf = pq.ParquetFile(pa.PythonFile(HttpFile(head.url, size)))
+        table = pf.read_row_group(rg, columns=["img_id", "image"])
+        blobs = dict(zip(table.column("img_id").to_pylist(),
+                         table.column("image").to_pylist()))
+        for r in items:
+            try:
+                raw = blobs[r["member"]]["bytes"]
+                img = normalize(raw)
+                digest = hashlib.sha256(img).hexdigest()
+                if write_hashes:
+                    r["sha256"] = digest
+                elif r["sha256"] and r["sha256"] != digest:
+                    raise ValueError(f"hash mismatch for {r['member']}")
+                dest = REPO / r["dest_path"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(img)
+                done += 1
+            except Exception as e:
+                failed += 1
+                print(f"  FAILED {r['member']}: {type(e).__name__}: {e}")
+        print(f"  row group {rg}: {len(items)} images", flush=True)
+    return done, failed
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -148,6 +189,16 @@ def main():
                     print(f"  FAILED {r['member']}: {type(e).__name__}: {e}")
                 if (i + 1) % 200 == 0:
                     print(f"  {i + 1}/{len(pending)}", flush=True)
+
+    sid_pending = [r for r in rows
+                   if r["source"] == "sid_set" and needs_fetch(r, args.write_hashes)]
+    if sid_pending:
+        print(f"\nSID_Set: {len(sid_pending)} to fetch (held-out, never trained on)")
+        d, f_ = fetch_sid(sid_pending, args.write_hashes, args.workers)
+        done += d
+        failed += f_
+    skipped += sum(1 for r in rows
+                   if r["source"] == "sid_set" and r not in sid_pending)
 
     if args.write_hashes:
         cols = list(rows[0].keys())
