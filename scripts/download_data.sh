@@ -19,7 +19,11 @@
 set -e
 cd "$(dirname "$0")/.."
 
-echo "==> Fetching WildFake subset (3 generators x 700 + 3 real sources x 700)"
+echo "==> Fetching both datasets (~125 MB total):"
+echo "      WildFake  4200 imgs - 3 generators x 700 + 3 matched real sources x 700"
+echo "                           -> train / val / test"
+echo "      SID_Set    500 imgs - 250 real + 250 synthetic, split=heldout"
+echo "                           -> unseen-generator eval only, never trained on"
 python3 scripts/fetch_dataset.py
 
 echo
