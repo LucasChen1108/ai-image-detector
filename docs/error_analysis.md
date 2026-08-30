@@ -51,21 +51,25 @@ signal a semantic (CLIP) branch misses, we built a dedicated diagnostic
 
 On the baseline checkpoint (`freq_lr_multiplier: 1.0`):
 
-| | in-domain (val) | unseen_generator |
-|---|---|---|
-| AUC with frequency branch | 0.9386 | 0.5070 |
-| AUC with frequency zeroed | 0.9383 | 0.5027 |
-| delta | +0.0002 | +0.0044 |
+| | in-domain (val) | blur_sigma2 | unseen_generator |
+|---|---|---|---|
+| AUC with frequency branch | 0.9386 | 0.8189 | 0.5070 |
+| AUC with frequency zeroed | 0.9383 | 0.8206 | 0.5027 |
+| delta | +0.0002 | -0.0017 | +0.0044 |
 
-Both deltas are near zero — the frequency branch is barely influencing
-predictions anywhere, in-domain or out. The gradient check explains why: its
-gradient norm (0.050) ran ~65x smaller than the semantic projection head's
-(3.28) on a single backward pass, consistent with a known "modality
-imbalance" pattern in multi-branch fusion — an ~88M-parameter pretrained
-CLIP branch produces a strong, low-loss signal almost immediately, so
-gradient descent naturally routes most useful update magnitude through it
-while a small, randomly-initialized CNN branch gets comparatively tiny
-updates each step.
+All three deltas are near zero — the frequency branch is barely influencing
+predictions anywhere we've checked, including blur, the one condition it
+was specifically designed to help with (recovering high-frequency artifacts
+that blur destroys). That rules out "it only fails to generalize
+cross-generator" as the story; the more accurate statement is that the
+fusion layer isn't leaning on this branch's output under any condition
+tested so far. The gradient check explains why: its gradient norm (0.050)
+ran ~65x smaller than the semantic projection head's (3.28) on a single
+backward pass, consistent with a known "modality imbalance" pattern in
+multi-branch fusion — an ~88M-parameter pretrained CLIP branch produces a
+strong, low-loss signal almost immediately, so gradient descent naturally
+routes most useful update magnitude through it while a small,
+randomly-initialized CNN branch gets comparatively tiny updates each step.
 
 ### Experiment: does more capacity fix it?
 
@@ -125,4 +129,26 @@ existing branch.
 Broaden training-generator diversity rather than tune optimization further —
 per the brief's own SAFE/DDA-derived guidance ("augmentation + data
 alignment > architecture tricks"), the fix for a representation gap is more
-representative training data, not a different learning rate.
+representative training data, not a different learning rate. Concretely:
+add a modest slice of one or two additional diffusion-generator subsets
+from [GenImage](https://github.com/GenImage-Dataset/GenImage) (a public
+benchmark covering Stable Diffusion, GLIDE, VQDM, Midjourney, and Wukong,
+in addition to BigGAN/ADM) into the *training* manifest — keeping SID_Set
+untouched as the held-out eval set throughout, so the unseen-generator
+number stays an honest measurement rather than becoming something the
+model was partly trained on.
+
+For blur specifically: the frequency branch doesn't appear to be carrying
+blur robustness either (ablation delta -0.0017, Finding 2), so the higher-
+leverage change there is tuning `RedistributionAugment` in
+`src/data/augmentations.py` — e.g. weighting blur more heavily in the
+per-sample op choice, or extending `blur_sigma_range` beyond the current
+(0.3, 2.5) — rather than a frequency-branch architecture change.
+
+Also worth adding before final submission: a false-positive-rate discussion
+at a chosen calibrated-probability threshold (the brief's "Technical Goal"
+slide names false positives explicitly, alongside robustness and
+generalization, as an expected trade-off discussion). `src/calibrate.py`
+now produces calibrated probabilities via temperature scaling; a short
+precision/recall or false-positive-rate table at threshold=0.5 would close
+this out cheaply once that checkpoint is calibrated.
