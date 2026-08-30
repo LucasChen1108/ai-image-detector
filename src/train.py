@@ -68,9 +68,8 @@ def main():
 
     # Dual-tensor wiring fixed: raw_img is now reconstructed from clip_img via
     # to_raw_rgb01() above (see that docstring) rather than needing
-    # ManifestDataset to return two tensors. NOTE: evaluate.py / calibrate.py
-    # currently have the same img,img placeholder pattern as this file did —
-    # they need the same fix before real robustness numbers are trustworthy.
+    # ManifestDataset to return two tensors. evaluate.py, calibrate.py, and
+    # scripts/check_frequency_branch.py all reuse this same pattern now.
     train_ds = ManifestDataset(cfg["data"]["manifest_csv"], "train", preprocess, train_aug)
     val_ds = ManifestDataset(cfg["data"]["manifest_csv"], "val", preprocess, None)
 
@@ -79,10 +78,37 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=cfg["train"]["batch_size"], shuffle=False,
                              num_workers=cfg["train"].get("num_workers", 4))
 
+    # The frequency branch is a small CNN starting from random weights, fused
+    # against an ~88M-param pretrained CLIP branch that already produces a
+    # strong, low-loss signal almost immediately. check_frequency_branch.py's
+    # gradient check showed the frequency branch's gradient norm running
+    # ~65x smaller than the semantic head's under a single shared LR — with
+    # AdamW's per-parameter adaptive scaling this still under-trains it in
+    # practice (confirmed by a near-zero with/without ablation delta on the
+    # resulting checkpoint), a known "modality imbalance" pattern in
+    # multi-branch fusion. Give the frequency branch its own higher LR via a
+    # separate param group so its small gradients still translate into
+    # meaningful updates over the same epoch budget, rather than changing
+    # the architecture itself.
+    freq_lr_mult = cfg["train"].get("freq_lr_multiplier", 1.0)
+    freq_params = list(model.frequency.parameters())
+    freq_param_ids = {id(p) for p in freq_params}
+    other_params = [p for p in model.parameters()
+                    if p.requires_grad and id(p) not in freq_param_ids]
+
+    base_lr = cfg["train"]["lr"]
+    weight_decay = cfg["train"].get("weight_decay", 1e-4)
     opt = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=cfg["train"]["lr"], weight_decay=cfg["train"].get("weight_decay", 1e-4),
+        [
+            {"params": other_params, "lr": base_lr},
+            {"params": [p for p in freq_params if p.requires_grad],
+             "lr": base_lr * freq_lr_mult},
+        ],
+        weight_decay=weight_decay,
     )
+    if freq_lr_mult != 1.0:
+        print(f"frequency branch LR = {base_lr * freq_lr_mult:.6f} "
+              f"({freq_lr_mult}x base LR {base_lr:.6f})")
     criterion = nn.BCEWithLogitsLoss()
 
     best_auc = 0.0
