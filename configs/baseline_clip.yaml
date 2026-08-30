@@ -20,11 +20,24 @@ train:
   weight_decay: 0.0001
   num_workers: 4
   ckpt_dir: "checkpoints"
-  # scripts/check_frequency_branch.py's gradient check found the frequency
-  # branch's gradients running ~65x smaller than the semantic head's under a
-  # shared LR, and the resulting checkpoint showed a near-zero ablation
-  # delta (frequency branch not meaningfully contributing). Give it its own
-  # higher LR so it can catch up within the same epoch budget. 5x is a
-  # starting point, not a tuned value -- if the branch is still not moving
-  # the ablation delta after a retrain, try 10x before touching architecture.
-  freq_lr_multiplier: 5.0
+  # RESULT (documented, not reverted blindly): tried freq_lr_multiplier=5.0
+  # to fix the frequency branch's near-zero ablation contribution (see
+  # scripts/check_frequency_branch.py). It worked in the narrow sense that
+  # the branch stopped being inert -- the unseen_generator ablation delta
+  # went from +0.0044 (v1, no boost) to -0.0071 (v2, 5x boost) -- but the
+  # sign is negative: zeroing the frequency branch now IMPROVES
+  # unseen-generator AUC, i.e. the extra learning capacity went toward
+  # WildFake-specific frequency artifacts that hurt cross-generator
+  # transfer, not toward anything that generalizes. In-domain contribution
+  # stayed ~0 either way (-0.0010 boosted vs +0.0002 unboosted). Headline
+  # robustness-table AUCs were ~identical between v1/v2 since CLIP alone is
+  # already near-ceiling on this data, so the table alone won't show this --
+  # only the ablation delta does.
+  #
+  # Conclusion: undertraining was NOT the (whole) explanation for the
+  # frequency branch's low contribution; more capacity just found a
+  # non-transferable signal. Reverted to 1.0 (no boost) as the safer
+  # checkpoint. v2 kept at checkpoints/best_v2_freq_lr5x_negative_result.pt
+  # for reference / the write-up; v1 is checkpoints/best.pt (the one
+  # in active use).
+  freq_lr_multiplier: 1.0
