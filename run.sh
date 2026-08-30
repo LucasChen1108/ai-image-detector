@@ -6,6 +6,9 @@
 #   bash run.sh calibrate       # fit temperature scaling on the val set
 #   bash run.sh build_testset   # materialize the robustness test set
 #   bash run.sh evaluate        # run full robustness eval + Final Score
+#   bash run.sh predict --input_dir DIR [--out predictions.json]
+#                                # score every image in DIR, writing
+#                                # [{"image_path": ..., "pred": ...}, ...]
 set -e
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD/src:$PYTHONPATH"
@@ -28,9 +31,14 @@ case "$CMD" in
     python3 src/evaluate.py --config configs/baseline_clip.yaml \
       --checkpoint checkpoints/best.pt --manifest data/robustness_manifest.csv
     ;;
+  predict)
+    shift
+    python3 src/predict.py --config configs/baseline_clip.yaml \
+      --checkpoint checkpoints/best.pt "$@"
+    ;;
   *)
     echo "Unknown command: $CMD"
-    echo "Usage: bash run.sh {train|calibrate|build_testset|evaluate}"
+    echo "Usage: bash run.sh {train|calibrate|build_testset|evaluate|predict}"
     exit 1
     ;;
 esac
