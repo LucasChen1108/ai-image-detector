@@ -57,6 +57,42 @@ def add_sensor_noise(img: Image.Image, sigma: float = 3.0) -> Image.Image:
     return Image.fromarray(arr)
 
 
+def gaussian_noise_01(img: Image.Image, sigma: float) -> Image.Image:
+    """Additive Gaussian noise with sigma expressed on a normalized [0,1]
+    pixel scale, matching the challenge brief's parameterization (sigma =
+    0.02 / 0.05 / 0.10) directly -- unlike add_sensor_noise above, which
+    uses a raw 0-255 scale for the training-time augmenter. Real-world
+    analog: low-light sensor noise."""
+    arr = np.array(img).astype(np.float32) / 255.0
+    noise = np.random.normal(0, sigma, arr.shape)
+    arr = np.clip(arr + noise, 0.0, 1.0)
+    return Image.fromarray((arr * 255.0).astype(np.uint8))
+
+
+def downscale_upscale(img: Image.Image, scale: float) -> Image.Image:
+    """Resize down to `scale` of original resolution, then back up to the
+    original size -- the brief's "Resize" condition (scale 0.5x / 0.25x
+    then upscale), real-world analog: thumbnail generation. Distinct from
+    random_crop_resize (which crops a sub-region) -- this shrinks the whole
+    frame, destroying fine detail uniformly rather than at the edges."""
+    w, h = img.size
+    small = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.BICUBIC)
+    return small.resize((w, h), Image.BICUBIC)
+
+
+def color_jitter_fixed(img: Image.Image, factor: float = 1.2) -> Image.Image:
+    """Deterministic +/-20% brightness/contrast/saturation shift -- the
+    brief's "Color Jitter" condition. Fixed (not random) because eval
+    conditions must be reproducible for a fixed test set, unlike the
+    training-time T.ColorJitter which is intentionally randomized per
+    sample. Real-world analog: filter apps, auto-enhance."""
+    from PIL import ImageEnhance
+    img = ImageEnhance.Brightness(img).enhance(factor)
+    img = ImageEnhance.Contrast(img).enhance(factor)
+    img = ImageEnhance.Color(img).enhance(factor)  # PIL's "Color" = saturation
+    return img
+
+
 def simulate_rescreenshot(img: Image.Image) -> Image.Image:
     """Approximate a screenshot-of-a-screenshot: down-resize, slight blur,
     re-encode at moderate JPEG quality, upscale back."""
@@ -129,12 +165,26 @@ def build_train_transform(image_size: int = 224):
 # Fixed, named conditions for the EVAL-time robustness test set. Keep this in
 # sync with scripts/build_robustness_testset.py and src/evaluate.py so the
 # robustness table columns line up with what the slide deck expects.
+# Named per the challenge brief's transform grid (5.2): JPEG q=90/70/50/30,
+# Gaussian Blur sigma=0.5/1.0/2.0, Resize 0.5x/0.25x-then-upscale, Gaussian
+# Noise sigma=0.02/0.05/0.10, Color Jitter +/-20%, Center Crop 80%. The brief
+# says "a subset" is acceptable, but we cover all six categories so the
+# robustness table matches the official grid rather than only the slide
+# deck's illustrative subset.
 EVAL_CONDITIONS = {
     "clean": lambda img: img,
     "jpeg_q90": lambda img: jpeg_recompress(img, 90),
     "jpeg_q70": lambda img: jpeg_recompress(img, 70),
     "jpeg_q50": lambda img: jpeg_recompress(img, 50),
     "jpeg_q30": lambda img: jpeg_recompress(img, 30),
+    "blur_sigma0.5": lambda img: gaussian_blur(img, 0.5),
+    "blur_sigma1.0": lambda img: gaussian_blur(img, 1.0),
     "blur_sigma2": lambda img: gaussian_blur(img, 2.0),
+    "resize_0.5x": lambda img: downscale_upscale(img, 0.5),
+    "resize_0.25x": lambda img: downscale_upscale(img, 0.25),
+    "noise_sigma0.02": lambda img: gaussian_noise_01(img, 0.02),
+    "noise_sigma0.05": lambda img: gaussian_noise_01(img, 0.05),
+    "noise_sigma0.10": lambda img: gaussian_noise_01(img, 0.10),
+    "color_jitter": lambda img: color_jitter_fixed(img, 1.2),
     "crop_80pct": lambda img: random_crop_resize(img, 0.8),
 }

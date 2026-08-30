@@ -1,7 +1,9 @@
 """
-Evaluation: computes AUC + Accuracy per robustness condition (clean,
-jpeg_q90/70/50/30, blur_sigma2, crop_80pct, unseen_generator), prints/saves a
-compact markdown table matching the slide deck's format, and computes:
+Evaluation: computes AUC + Accuracy per robustness condition -- clean, JPEG
+q90/70/50/30, Gaussian blur sigma=0.5/1.0/2.0, resize 0.5x/0.25x (thumbnail),
+Gaussian noise sigma=0.02/0.05/0.10, color jitter, center crop 80%, plus
+unseen_generator -- matching the challenge brief's transform grid (5.2).
+Prints/saves a compact markdown table and computes:
 
     Final Score = 0.50 * AUC_clean + 0.50 * AUC_robust
 
@@ -28,7 +30,10 @@ from train import get_clip_norm_stats, to_raw_rgb01
 
 ROBUSTNESS_CONDITIONS = [
     "clean", "jpeg_q90", "jpeg_q70", "jpeg_q50", "jpeg_q30",
-    "blur_sigma2", "crop_80pct",
+    "blur_sigma0.5", "blur_sigma1.0", "blur_sigma2",
+    "resize_0.5x", "resize_0.25x",
+    "noise_sigma0.02", "noise_sigma0.05", "noise_sigma0.10",
+    "color_jitter", "crop_80pct",
 ]
 
 
