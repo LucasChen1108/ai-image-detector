@@ -20,7 +20,7 @@ case "$CMD" in
     ;;
   build_testset)
     python3 scripts/build_robustness_testset.py \
-      --source_manifest data/manifest.csv \
+      --source_manifest manifest/manifest.csv \
       --out_dir data/robustness_testset \
       --out_manifest data/robustness_manifest.csv
     ;;
