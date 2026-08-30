@@ -20,3 +20,11 @@ train:
   weight_decay: 0.0001
   num_workers: 4
   ckpt_dir: "checkpoints"
+  # scripts/check_frequency_branch.py's gradient check found the frequency
+  # branch's gradients running ~65x smaller than the semantic head's under a
+  # shared LR, and the resulting checkpoint showed a near-zero ablation
+  # delta (frequency branch not meaningfully contributing). Give it its own
+  # higher LR so it can catch up within the same epoch budget. 5x is a
+  # starting point, not a tuned value -- if the branch is still not moving
+  # the ablation delta after a retrain, try 10x before touching architecture.
+  freq_lr_multiplier: 5.0
