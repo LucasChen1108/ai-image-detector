@@ -30,6 +30,11 @@ Usage:
 
     # ablation (needs a trained checkpoint)
     python3 scripts/check_frequency_branch.py --config configs/baseline_clip.yaml --mode ablation --checkpoint checkpoints/best.pt
+
+    # ablation against a specific condition from the robustness manifest, e.g.
+    # the held-out-generator rows (build scripts/build_robustness_testset.py first)
+    python3 scripts/check_frequency_branch.py --mode ablation --checkpoint checkpoints/best.pt \
+        --manifest data/robustness_manifest.csv --split unseen_generator
 """
 import argparse
 import sys
@@ -44,6 +49,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from data.datasets import ManifestDataset  # noqa: E402
 from models.detector import HybridDetector  # noqa: E402
+from train import get_clip_norm_stats, to_raw_rgb01  # noqa: E402
 
 
 def grad_norm(params) -> float:
@@ -54,12 +60,12 @@ def grad_norm(params) -> float:
     return total ** 0.5
 
 
-def run_gradient_check(model, loader, device):
+def run_gradient_check(model, loader, device, clip_mean, clip_std):
     print("\n=== GRADIENT CHECK ===")
     model.train()
     batch = next(iter(loader))
     clip_img = batch["image"].to(device)
-    raw_img = batch["image"].to(device)  # any real image tensor is fine for this check
+    raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
     labels = batch["label"].to(device)
 
     logit = model(clip_img, raw_img)
@@ -84,14 +90,14 @@ def run_gradient_check(model, loader, device):
         print("\nOK: frequency branch is receiving a comparable-magnitude gradient signal.")
 
 
-def run_ablation(model, loader, device):
+def run_ablation(model, loader, device, clip_mean, clip_std):
     print("\n=== ABLATION: with vs. without the frequency branch ===")
     model.eval()
     probs_full, probs_no_freq, labels_all = [], [], []
     with torch.no_grad():
         for batch in loader:
             clip_img = batch["image"].to(device)
-            raw_img = batch["image"].to(device)
+            raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
 
             sem = model.semantic(clip_img)
             freq = model.frequency(raw_img)
@@ -125,6 +131,13 @@ def main():
     ap.add_argument("--checkpoint", default=None,
                      help="required for --mode ablation; omit for --mode gradient to use fresh weights")
     ap.add_argument("--mode", choices=["gradient", "ablation", "both"], default="both")
+    ap.add_argument("--manifest", default=None,
+                     help="manifest CSV to evaluate against; defaults to data.manifest_csv "
+                          "in --config. Point this at data/robustness_manifest.csv to check "
+                          "e.g. the unseen_generator condition instead of the training val split.")
+    ap.add_argument("--split", default="val",
+                     help='split column value to filter to (default "val"; use '
+                          '"unseen_generator" together with --manifest data/robustness_manifest.csv)')
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -144,13 +157,17 @@ def main():
         raise SystemExit("--mode ablation (or both) needs --checkpoint — a trained model, "
                           "not fresh random weights, or the comparison is meaningless.")
 
-    val_ds = ManifestDataset(cfg["data"]["manifest_csv"], "val", model.semantic.preprocess, None)
+    manifest_csv = args.manifest or cfg["data"]["manifest_csv"]
+    print(f"Evaluating against manifest={manifest_csv} split={args.split}")
+    val_ds = ManifestDataset(manifest_csv, args.split, model.semantic.preprocess, None)
     val_loader = DataLoader(val_ds, batch_size=cfg["train"]["batch_size"], shuffle=True)
 
+    clip_mean, clip_std = get_clip_norm_stats(model.semantic.preprocess)
+
     if args.mode in ("gradient", "both"):
-        run_gradient_check(model, val_loader, device)
+        run_gradient_check(model, val_loader, device, clip_mean, clip_std)
     if args.mode in ("ablation", "both"):
-        run_ablation(model, val_loader, device)
+        run_ablation(model, val_loader, device, clip_mean, clip_std)
 
 
 if __name__ == "__main__":
