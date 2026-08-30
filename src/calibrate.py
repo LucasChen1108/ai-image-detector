@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 
 from data.datasets import ManifestDataset
 from models.detector import HybridDetector
+from train import get_clip_norm_stats, to_raw_rgb01
 
 
 def main():
@@ -38,6 +39,8 @@ def main():
         p.requires_grad = False
     model.raw_temperature.requires_grad = True
 
+    clip_mean, clip_std = get_clip_norm_stats(model.semantic.preprocess)
+
     val_ds = ManifestDataset(cfg["data"]["manifest_csv"], "val", model.semantic.preprocess, None)
     val_loader = DataLoader(val_ds, batch_size=cfg["train"]["batch_size"], shuffle=False)
 
@@ -48,8 +51,9 @@ def main():
     model.eval()
     with torch.no_grad():
         for batch in val_loader:
-            img = batch["image"].to(device)
-            logit = model(img, img)
+            clip_img = batch["image"].to(device)
+            raw_img = to_raw_rgb01(clip_img, clip_mean, clip_std)
+            logit = model(clip_img, raw_img)
             logits_all.append(logit)
             labels_all.append(batch["label"].to(device))
     logits_all = torch.cat(logits_all)
