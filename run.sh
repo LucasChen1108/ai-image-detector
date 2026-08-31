@@ -9,6 +9,9 @@
 #   bash run.sh predict --input_dir DIR [--out predictions.json]
 #                                # score every image in DIR, writing
 #                                # [{"image_path": ..., "pred": ...}, ...]
+#   bash run.sh find_errors     # pull representative false positive /
+#                                # false negative examples for the error
+#                                # analysis note (docs/examples/, docs/error_examples.json)
 set -e
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD/src:$PYTHONPATH"
@@ -36,9 +39,14 @@ case "$CMD" in
     python3 src/predict.py --config configs/baseline_clip.yaml \
       --checkpoint checkpoints/best.pt "$@"
     ;;
+  find_errors)
+    shift
+    python3 scripts/find_error_examples.py --config configs/baseline_clip.yaml \
+      --checkpoint checkpoints/best.pt "$@"
+    ;;
   *)
     echo "Unknown command: $CMD"
-    echo "Usage: bash run.sh {train|calibrate|build_testset|evaluate|predict}"
+    echo "Usage: bash run.sh {train|calibrate|build_testset|evaluate|predict|find_errors}"
     exit 1
     ;;
 esac
