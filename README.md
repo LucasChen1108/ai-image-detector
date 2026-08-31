@@ -1,6 +1,8 @@
-# ai-image-detector
+# PixelProof
 
 Our submission for TechJam's "Robust Detection of AI-Generated Images Under Real-World Transformations" challenge. Built by 4 of us over a hackathon weekend, so don't expect production polish — expect a model that actually works, honestly-reported numbers, and a couple of experiments that flopped and taught us something anyway.
+
+(Repo is still named `ai-image-detector` on GitHub — didn't want to risk breaking any links we'd already shared by renaming it mid-submission. PixelProof is the project name everywhere else: Devpost, this README, the demo video.)
 
 ## What this actually is
 
