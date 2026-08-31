@@ -91,6 +91,19 @@ def main():
     print(f"\nTotal false positives (real predicted as AI, clean/no transform): {len(fp_all)} / {len(reals)}")
     print(f"Total false negatives (AI predicted as real, clean/no transform): {len(fn_all)} / {len(fakes)}")
 
+    # Per-generator breakdown of false negatives -- is the model missing one
+    # generator family more than others, or is it spread evenly?
+    generators = sorted(set(r["generator"] for r in fakes))
+    fn_by_generator = {}
+    for g in generators:
+        g_total = sum(1 for r in fakes if r["generator"] == g)
+        g_fn = sum(1 for r in fn_all if r["generator"] == g)
+        fn_by_generator[g] = {"total": g_total, "false_negatives": g_fn,
+                               "rate": round(g_fn / g_total, 4) if g_total else None}
+    print("\nFalse negative rate by generator:")
+    for g, d in fn_by_generator.items():
+        print(f"  {g}: {d['false_negatives']}/{d['total']} ({d['rate']:.1%})")
+
     examples_dir = Path(args.examples_dir)
     examples_dir.mkdir(parents=True, exist_ok=True)
     for old in examples_dir.glob("fp_*.jpg"):
@@ -120,6 +133,7 @@ def main():
         "n_fake": len(fakes),
         "n_false_positives": len(fp_all),
         "n_false_negatives": len(fn_all),
+        "false_negative_rate_by_generator": fn_by_generator,
         "false_positive_examples": fp_examples,
         "false_negative_examples": fn_examples,
     }
