@@ -25,8 +25,69 @@ We ran this on our held-out `test` split (WildFake's ADM, StyleGAN3, VQVAE gener
 
 Final Score (0.5·AUC_clean + 0.5·AUC_robust, robust = mean of the 14 post-processing conditions above, not counting `unseen_generator`) comes out to about **0.915**. We're happy with this half of the results -- every post-processing condition stays above 0.82 AUC, and it degrades the way you'd expect as each transform gets harsher (blur goes 0.93 → 0.91 → 0.82 as sigma climbs, for example). `resize_0.25x` and `noise_sigma0.10` are the weakest at 0.82 each -- we tried to fix specifically those two and it didn't go well, see Finding 3.
 
-## Finding 1: robustness to post-processing is solid; cross-generator
-## generalization is not
+## Representative false positives and false negatives
+
+Ran `scripts/find_error_examples.py` (`bash run.sh find_errors`) on the same
+420-image clean/no-transform condition above -- no post-processing, so these
+are the model's core errors, not something a blur or JPEG pass introduced.
+22 of 210 real images got scored as AI-generated (10.5% false positive
+rate), and 34 of 210 AI images got scored as real (16.2% false negative
+rate).
+
+The false negatives aren't spread evenly across generators:
+
+| Generator | False negatives | Rate |
+|---|---|---|
+| adm | 4 / 70 | 5.7% |
+| stylegan3 | 16 / 70 | 22.9% |
+| vqvae | 14 / 70 | 20.0% |
+
+adm (a diffusion model, same family WildFake trains on most) gets caught
+almost every time; stylegan3 and vqvae slip past roughly 4x as often. Worth
+reading alongside the `unseen_generator` result below -- that's *also* a
+generator the model handles badly (SID_Set). Together they point the same
+way: the model's strength tracks specific generator fingerprints it saw a
+lot of in training, not a clean "diffusion vs. GAN vs. VQ" category
+boundary.
+
+### False positives -- real photos scored as AI-generated
+
+| | | | |
+|---|---|---|---|
+| ![close-up cat face](examples/fp_1_real_pred1.00.jpg) pred 1.00 | ![chain-link fence over debris](examples/fp_2_real_pred0.98.jpg) pred 0.98 | ![close-up dirt and soil](examples/fp_3_real_pred0.96.jpg) pred 0.96 | ![glossy studio headshot](examples/fp_4_real_pred0.95.jpg) pred 0.95 |
+
+All four of the model's most confident false positives are close-up,
+texture-heavy, or unusually polished shots: a macro cat-face crop, a
+chain-link fence over debris, a dirt/soil close-up, and a glossy studio
+headshot with soft bokeh and near-perfect skin. None of these are "normal"
+snapshot compositions -- they're either extreme macro texture (fur, dirt,
+wire mesh) or the kind of over-lit, over-smooth portrait that looks like
+stock photography. Our read: the model has picked up something closer to
+"looks too clean / too textured to be a candid photo" than an actual
+generative-artifact signal, and unusual real photography trips that same
+heuristic.
+
+### False negatives -- AI images scored as real
+
+| | | | |
+|---|---|---|---|
+| ![fox portrait, stylegan3](examples/fn_1_stylegan3_pred0.00.jpg) pred 0.00, stylegan3 | ![corporate headshot, stylegan3](examples/fn_2_stylegan3_pred0.01.jpg) pred 0.01, stylegan3 | ![baseball batter, vqvae](examples/fn_3_vqvae_pred0.01.jpg) pred 0.01, vqvae | ![portrait in teal jacket, stylegan3](examples/fn_4_stylegan3_pred0.01.jpg) pred 0.01, stylegan3 |
+
+Close to the mirror image of the false positives: a fox portrait, two
+corporate-style headshots, and a baseball action shot -- all ordinary,
+mundane compositions with nothing visually "off." Three of the four are
+StyleGAN3, which is more or less built for exactly this (photorealistic
+human faces with natural framing and lighting), and it shows: the model
+seems to key off surface polish/unusualness more than any deeper generative
+signature, so an AI image that happens to look like a boring real photo
+slips through with high confidence.
+
+Full scored results (all 8 examples plus the per-generator breakdown) are
+in `docs/error_examples.json`; the thumbnails themselves are in
+`docs/examples/`.
+
+## Finding 1: robustness to post-processing is solid, cross-generator
+generalization is not
 
 Accuracy degrades gracefully under JPEG recompression, blur, and cropping —
 AUC stays above 0.82 even at JPEG q30 and blur σ=2, the two harshest
