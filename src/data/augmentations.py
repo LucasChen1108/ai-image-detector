@@ -107,17 +107,29 @@ def simulate_rescreenshot(img: Image.Image) -> Image.Image:
 class RedistributionAugment:
     """Applied at TRAIN time only, with probability `p` per-sample, one
     randomly chosen transform per application (keeps clean/augmented mix
-    balanced rather than stacking every corruption on every sample)."""
+    balanced rather than stacking every corruption on every sample).
+
+    noise_sigma_range and resize_scale_range are set to cover (and exceed,
+    for margin) the hardest conditions in EVAL_CONDITIONS / the challenge
+    brief's transform grid -- noise up to sigma=0.10 normalized (~25.5 on
+    the 0-255 scale used here), resize down to 0.25x -- per the "if a
+    transformation can happen on a real feed, it must happen in training"
+    principle. Before this, noise_sigma was a fixed 3.0 (~0.012 normalized,
+    ~8x weaker than the hardest eval condition) and there was no dedicated
+    whole-frame resize/thumbnail op at all (crop_resize crops a sub-region
+    instead of shrinking the whole frame; rescreenshot bundles a fixed 2x
+    downscale with blur+JPEG rather than testing resize in isolation)."""
     p: float = 0.7
     jpeg_quality_range: tuple = (30, 95)
     blur_sigma_range: tuple = (0.3, 2.5)
     crop_min_frac: float = 0.7
-    noise_sigma: float = 3.0
+    noise_sigma_range: tuple = (2.0, 30.0)
+    resize_scale_range: tuple = (0.2, 0.8)
 
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() > self.p:
             return img
-        op = random.choice(["jpeg", "blur", "crop", "noise", "rescreenshot", "none"])
+        op = random.choice(["jpeg", "blur", "crop", "noise", "resize", "rescreenshot", "none"])
         if op == "jpeg":
             q = random.randint(*self.jpeg_quality_range)
             return jpeg_recompress(img, q)
@@ -127,7 +139,11 @@ class RedistributionAugment:
         if op == "crop":
             return random_crop_resize(img, self.crop_min_frac)
         if op == "noise":
-            return add_sensor_noise(img, self.noise_sigma)
+            s = random.uniform(*self.noise_sigma_range)
+            return add_sensor_noise(img, s)
+        if op == "resize":
+            scale = random.uniform(*self.resize_scale_range)
+            return downscale_upscale(img, scale)
         if op == "rescreenshot":
             return simulate_rescreenshot(img)
         return img
