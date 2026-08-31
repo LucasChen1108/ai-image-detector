@@ -1,0 +1,84 @@
+{
+  "condition": "clean",
+  "n_real": 210,
+  "n_fake": 210,
+  "n_false_positives": 22,
+  "n_false_negatives": 34,
+  "false_negative_rate_by_generator": {
+    "adm": {
+      "total": 70,
+      "false_negatives": 4,
+      "rate": 0.0571
+    },
+    "stylegan3": {
+      "total": 70,
+      "false_negatives": 16,
+      "rate": 0.2286
+    },
+    "vqvae": {
+      "total": 70,
+      "false_negatives": 14,
+      "rate": 0.2
+    }
+  },
+  "false_positive_examples": [
+    {
+      "path": "data/robustness_testset/clean/255.jpg",
+      "label": 0,
+      "generator": "real",
+      "pred": 0.9987092018127441,
+      "example_file": "docs/examples/fp_1_real_pred1.00.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/275.jpg",
+      "label": 0,
+      "generator": "real",
+      "pred": 0.9800119400024414,
+      "example_file": "docs/examples/fp_2_real_pred0.98.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/347.jpg",
+      "label": 0,
+      "generator": "real",
+      "pred": 0.95857173204422,
+      "example_file": "docs/examples/fp_3_real_pred0.96.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/390.jpg",
+      "label": 0,
+      "generator": "real",
+      "pred": 0.9487462043762207,
+      "example_file": "docs/examples/fp_4_real_pred0.95.jpg"
+    }
+  ],
+  "false_negative_examples": [
+    {
+      "path": "data/robustness_testset/clean/202.jpg",
+      "label": 1,
+      "generator": "stylegan3",
+      "pred": 0.0007730735815130174,
+      "example_file": "docs/examples/fn_1_stylegan3_pred0.00.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/185.jpg",
+      "label": 1,
+      "generator": "stylegan3",
+      "pred": 0.005932550877332687,
+      "example_file": "docs/examples/fn_2_stylegan3_pred0.01.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/102.jpg",
+      "label": 1,
+      "generator": "vqvae",
+      "pred": 0.012854468077421188,
+      "example_file": "docs/examples/fn_3_vqvae_pred0.01.jpg"
+    },
+    {
+      "path": "data/robustness_testset/clean/164.jpg",
+      "label": 1,
+      "generator": "stylegan3",
+      "pred": 0.013809604570269585,
+      "example_file": "docs/examples/fn_4_stylegan3_pred0.01.jpg"
+    }
+  ]
+}
