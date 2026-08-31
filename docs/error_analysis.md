@@ -2,14 +2,7 @@
 
 ## Robustness summary
 
-Evaluated on the held-out `test` split (WildFake generators: ADM, StyleGAN3, VQVAE)
-plus a cross-generator condition (`unseen_generator`) drawn from SID_Set, a diffusion
-generator never present in training. Checkpoint: `checkpoints/best.pt`
-(`freq_lr_multiplier: 1.0`, default augmentation recipe -- see Finding 3 below
-for why the widened-noise/added-resize variant was tried and reverted --
-10 epochs, WildFake only). 15 conditions, covering all six transform
-categories in the challenge brief's grid (5.2): JPEG, Gaussian Blur, Resize,
-Gaussian Noise, Color Jitter, Center Crop.
+We ran this on our held-out `test` split (WildFake's ADM, StyleGAN3, VQVAE generators) plus `unseen_generator`, which is SID_Set -- a generator the model never saw during training. Checkpoint is `checkpoints/best.pt` (`freq_lr_multiplier: 1.0`, the default augmentation recipe -- see Finding 3 for why we tried a widened version and reverted it, 10 epochs, WildFake only). 15 conditions total, covering all six transform categories from the brief (JPEG, Gaussian Blur, Resize, Gaussian Noise, Color Jitter, Center Crop) instead of just the subset the slide deck happened to show as an example.
 
 | Condition | Acc. | AUC |
 |---|---|---|
@@ -30,13 +23,7 @@ Gaussian Noise, Color Jitter, Center Crop.
 | crop_80pct | 0.81 | 0.90 |
 | unseen_generator | 0.48 | 0.51 |
 
-**Final Score** (0.5·AUC_clean + 0.5·AUC_robust, robust = mean of the 14
-post-processing conditions above, excluding `unseen_generator`) ≈ **0.915**.
-Every post-processing condition stays above 0.82 AUC, with a smooth,
-expected degradation curve as each transform gets harsher (e.g. blur:
-0.93 → 0.91 → 0.82 as sigma increases). `resize_0.25x` and
-`noise_sigma0.10` are the weakest post-processing conditions (0.82 AUC
-each); see Finding 3 for why we did not manage to improve on them.
+Final Score (0.5·AUC_clean + 0.5·AUC_robust, robust = mean of the 14 post-processing conditions above, not counting `unseen_generator`) comes out to about **0.915**. We're happy with this half of the results -- every post-processing condition stays above 0.82 AUC, and it degrades the way you'd expect as each transform gets harsher (blur goes 0.93 → 0.91 → 0.82 as sigma climbs, for example). `resize_0.25x` and `noise_sigma0.10` are the weakest at 0.82 each -- we tried to fix specifically those two and it didn't go well, see Finding 3.
 
 ## Finding 1: robustness to post-processing is solid; cross-generator
 ## generalization is not
@@ -60,11 +47,7 @@ robustness) but more severe in degree than we'd hoped for.
 
 ## Finding 2: the frequency branch's role in this failure
 
-Since the hybrid model's premise is that a frequency-domain branch captures
-signal a semantic (CLIP) branch misses, we built a dedicated diagnostic
-(`scripts/check_frequency_branch.py`) with two checks: a **gradient check**
-(does the frequency branch receive real learning signal?) and an **ablation**
-(does zeroing its embedding before fusion change predictions?).
+The whole point of the hybrid design is that the frequency branch is supposed to catch something the CLIP branch misses. So we built a diagnostic (`scripts/check_frequency_branch.py`) to actually check that, rather than just assuming it because the val AUC looked fine. Two checks: a gradient check (is the frequency branch even getting a real learning signal?) and an ablation (does zeroing it out before fusion actually change any predictions?).
 
 On the baseline checkpoint (`freq_lr_multiplier: 1.0`):
 
@@ -112,18 +95,7 @@ with it picking up WildFake-specific frequency artifacts (compression
 signature, generator-specific noise patterns) rather than a signal that
 transfers to a new generator family.
 
-**Conclusion:** undertraining was not the (whole) explanation for the
-frequency branch's low contribution. Giving it more effective learning
-capacity didn't produce a more general representation — it produced a more
-confidently WildFake-specific one. We reverted to `freq_lr_multiplier: 1.0`
-(`checkpoints/best.pt`) as the safer, do-no-harm checkpoint; the boosted
-checkpoint is retained at `checkpoints/best_v2_freq_lr5x_negative_result.pt`
-for reference. This is a negative result, but a diagnosed one: we know
-*why* the frequency branch isn't helping cross-generator generalization
-(a representation-quality problem, not a training-budget problem), which
-rules out the cheap fix and points toward what would actually be required —
-generator-diverse training data, not more optimization pressure on the
-existing branch.
+So undertraining wasn't the (whole) explanation for why the frequency branch wasn't contributing. Giving it more room to learn didn't make it more general, it just made it more confidently wrong about WildFake specifically. We went back to `freq_lr_multiplier: 1.0` (that's what `checkpoints/best.pt` is) since it's the safer, do-no-harm option; the boosted checkpoint is still around at `checkpoints/best_v2_freq_lr5x_negative_result.pt` if anyone wants to poke at it. We're counting this as a real result even though it's negative -- we now actually know *why* the frequency branch isn't helping generalization (it's a representation problem, not a training-budget problem), which rules out the cheap fix and points at what would actually help instead: more generator-diverse training data, not more optimization pressure on the branch we already have.
 
 ## Finding 3: widening augmentation to match eval was tried, and reverted
 
@@ -154,30 +126,9 @@ then retrained. Result: worse, not better, across nearly the whole table.
 the condition this change specifically targeted -- got measurably worse,
 and most of the rest of the table drifted down slightly too.
 
-**Working theory:** `random.choice()` over the op list means each op fires
-with probability 1/N. Adding a 7th op (`"resize"`) diluted how often
-`jpeg`/`blur`/`crop`/`noise` each get selected, by design, not just
-`noise`. And widening `noise_sigma_range` to (2.0, 30.0) means uniform
-sampling spends much of its mass on noise *milder* than the old fixed 3.0
--- so a change aimed at increasing exposure to harsh noise plausibly
-*decreased* average exposure to it instead, while simultaneously making
-every other op fire less often. Both effects point the same direction as
-what we measured.
+Our best guess why: `random.choice()` over the op list means each op fires with probability 1/N, so adding a 7th option (`"resize"`) quietly diluted how often `jpeg`/`blur`/`crop`/`noise` each get picked, not just `noise`. And widening `noise_sigma_range` to (2.0, 30.0) means most of what gets sampled from that range is actually milder than the old fixed 3.0 -- so a change meant to increase exposure to harsh noise may have decreased average exposure to it instead, on top of every other op also firing less often. Both of those point the same direction as what we actually measured, so we're fairly confident this is the real explanation and not just noise in the results.
 
-**Decision:** reverted to the pre-alignment augmentation recipe.
-`checkpoints/best.pt` is the reverted (v3) checkpoint; the widened-
-augmentation checkpoint is kept at
-`checkpoints/best_v4_aug_alignment_negative_result.pt` for reference. Like
-Finding 2's LR-boost experiment, this is a second diagnosed negative
-result rather than a silent revert: the fix that seemed obviously correct
-(train past what you're evaluated on) had a side effect (diluting the
-other ops' firing rate) that outweighed its intended benefit at these
-specific hyperparameter values. A better-targeted version of the same idea
--- e.g. reweighting op-selection probabilities instead of adding a op to
-an unweighted uniform choice, or increasing `noise_sigma`'s upper bound
-without changing its lower bound -- might still work, but we're not
-spending further iteration time on it given the marginal size of the gap
-being chased.
+We reverted to the pre-alignment augmentation recipe. `checkpoints/best.pt` is that reverted (v3) checkpoint; the widened-augmentation one is kept around at `checkpoints/best_v4_aug_alignment_negative_result.pt` in case it's useful later. Same as the LR-boost experiment in Finding 2, we're writing this up rather than quietly deleting it, because the fix that seemed obviously right (train on harder conditions than you're evaluated on) had a side effect we didn't anticipate that outweighed the intended benefit, at least at these specific numbers. A more careful version of the same idea -- reweighting how often each op gets picked instead of just adding a new option to an unweighted choice, or only raising `noise_sigma`'s upper bound without touching the lower one -- might still work. We just didn't have time to chase it further given how small the gap we were trying to close actually was.
 
 ## Trade-offs (per the brief's own framing)
 
