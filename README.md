@@ -1,14 +1,14 @@
 # PixelProof
 
-Our submission for TechJam's "Robust Detection of AI-Generated Images Under Real-World Transformations" challenge. Built by 4 of us over a hackathon weekend, so don't expect production polish — expect a model that actually works, honestly-reported numbers, and a couple of experiments that flopped and taught us something anyway.
+PixelProof detects AI-generated images after common real-world transformations. Four of us built it over a weekend, so don't expect production polish — expect a model that actually works, honestly-reported numbers, and a couple of experiments that flopped and taught us something anyway.
 
-(Repo is still named `ai-image-detector` on GitHub — didn't want to risk breaking any links we'd already shared by renaming it mid-submission. PixelProof is the project name everywhere else: Devpost, this README, the demo video.)
+(Repo is still named `ai-image-detector` on GitHub — we didn't want to risk breaking any links we'd already shared by renaming it mid-project. PixelProof is the project name everywhere else: Devpost, this README, the demo video.)
 
 ## What this actually is
 
 The task: tell real photos apart from AI-generated ones, and don't just do it on clean images — do it after the image has been through the stuff that actually happens on the internet (compressed, blurred, cropped, resized into a thumbnail, whatever).
 
-We went with a hybrid model, basically doing what the challenge brief itself suggested: combine a high-level "does this look real" signal with a low-level "does this have the statistical fingerprint of a generator" signal, because they tend to survive different kinds of damage.
+We went with a hybrid model: combine a high-level "does this look real" signal with a low-level "does this have the statistical fingerprint of a generator" signal, because they tend to survive different kinds of damage.
 
 - **Semantic branch** — a frozen CLIP ViT-B/32 (openai weights, loaded through `open_clip`) with a small trainable projection head on top. Frozen on purpose — we're not fine-tuning it, just training a lightweight head, which keeps CLIP's broad "seen a lot of images" generalization intact instead of overfitting it to our specific training generators.
 - **Frequency branch** — a small 4-layer CNN over the log-magnitude FFT spectrum of the raw image. The idea is this branch catches generator artifacts (weird periodic frequency patterns from up-sampling, missing sensor noise) that don't show up as anything a human — or CLIP — would notice by looking at the picture.
@@ -18,7 +18,7 @@ We went with a hybrid model, basically doing what the challenge brief itself sug
 
 ## Data
 
-- **[WildFake](https://modelscope.cn/datasets/hy2628982280/WildFake/summary)** — our actual training set. Multi-generator (ADM, StyleGAN3, VQVAE + real), which matters a lot for the "generalization" part of the brief.
+- **[WildFake](https://modelscope.cn/datasets/hy2628982280/WildFake/summary)** — our actual training set. Multi-generator (ADM, StyleGAN3, VQVAE + real), which matters a lot when testing generalization.
 - **[SID_Set](https://huggingface.co/datasets/saberzl/SID_Set)** — never touched during training. Held out completely so we have an honest "have you seen this exact generator before" test (spoiler: no, and it shows — see Results).
 - **[CIFAKE](https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images)** — used once, day one, just to prove the whole pipeline runs end to end before we committed hours to a real WildFake run. Not part of the final model.
 
@@ -42,16 +42,16 @@ This pulls WildFake + SID_Set and writes `manifest/manifest.csv` (the `split` co
 
 ## Running it
 
-Single entrypoint, `run.sh`, per the "run script" requirement:
+The main entrypoint is `run.sh`:
 
 ```bash
 bash run.sh train           # trains the model, saves checkpoints/best.pt
 bash run.sh build_testset   # generates the JPEG/blur/resize/noise/color-jitter/crop test variants
-bash run.sh evaluate        # runs the full robustness table + Final Score
+bash run.sh evaluate        # runs the full robustness table + overall score
 bash run.sh calibrate       # fits temperature scaling for calibrated probabilities
 ```
 
-And the actual inference script (this is what the brief specifically asks for — point it at a folder, get a JSON of predictions back):
+The inference script takes a folder and writes a JSON file of predictions:
 
 ```bash
 bash run.sh predict --input_dir path/to/some/images --out predictions.json
@@ -82,9 +82,9 @@ Ran on our held-out `test` split (WildFake generators the model trained on) plus
 | crop_80pct | 0.81 | 0.90 |
 | **unseen_generator** | **0.48** | **0.51** |
 
-Final Score (0.5 × AUC_clean + 0.5 × mean of the post-processing rows) ≈ **0.915**.
+Overall score (0.5 × AUC_clean + 0.5 × mean of the post-processing rows) ≈ **0.915**.
 
-We're pretty happy with the robustness half of this — every single post-processing condition stays above 0.82 AUC even at the harshest settings we tested (heaviest blur, heaviest noise, most aggressive downscale). That's covering the full transform grid from the brief, not a cherry-picked subset.
+We're pretty happy with the robustness half of this — every single post-processing condition stays above 0.82 AUC even at the harshest settings we tested (heaviest blur, heaviest noise, most aggressive downscale). We covered the full transform grid instead of cherry-picking a subset.
 
 `unseen_generator` is the number that's not good — 0.51 AUC is basically a coin flip. More on that below, because we actually spent a decent chunk of time on it and it's kind of the most interesting part of this project, even though (especially because) we didn't fix it.
 
@@ -92,7 +92,7 @@ We're pretty happy with the robustness half of this — every single post-proces
 
 Full writeup with all the numbers is in [`docs/error_analysis.md`](docs/error_analysis.md), but the short version:
 
-The model straight up cannot tell real from fake on SID_Set — a generator family it never saw during training — even though it does fine on WildFake's own generators (which include ADM, itself a diffusion model, so it's not simply "GANs vs diffusion"). This is a known hard problem, not a bug — our own challenge brief literally names cross-generator generalization as one of the two core things that make this task hard, and says "there's no silver bullet."
+The model straight up cannot tell real from fake on SID_Set — a generator family it never saw during training — even though it does fine on WildFake's own generators (which include ADM, itself a diffusion model, so it's not simply "GANs vs diffusion"). Cross-generator generalization is simply still a hard problem here, and there isn't a silver bullet.
 
 We built a diagnostic (`scripts/check_frequency_branch.py`) to figure out whether the frequency branch was even doing anything, since the whole point of the hybrid design was that it'd catch stuff CLIP misses. Turns out: not really. Zeroing it out barely changes predictions anywhere we tested — in-domain, under blur, or on the unseen generator. We tried two separate fixes for this:
 
@@ -112,7 +112,7 @@ src/models/detector.py         # fusion head, calibrated predict_proba()
 src/data/datasets.py           # manifest-driven dataset loader
 src/data/augmentations.py      # training-time augmentation + the eval-condition transforms
 src/train.py                   # training loop
-src/evaluate.py                # robustness table + Final Score
+src/evaluate.py                # robustness table + overall score
 src/calibrate.py               # temperature scaling
 src/predict.py                 # the directory-in, JSON-out inference script
 scripts/fetch_dataset.py       # pulls WildFake + SID_Set, writes manifest/manifest.csv

@@ -37,9 +37,8 @@ def to_raw_rgb01(clip_tensor: torch.Tensor, mean: torch.Tensor, std: torch.Tenso
     from the CLIP-preprocessed tensor. This is what the frequency branch
     needs (it computes an FFT over raw pixel statistics, not CLIP-normalized
     values) without requiring ManifestDataset to return two separate tensors
-    per sample. Bonus: both branches then see exactly the same resize/crop,
-    which keeps pixel-domain and frequency-domain statistics aligned (the
-    DDA insight from the brief)."""
+    per sample. Both branches then see exactly the same resize/crop, which
+    keeps pixel-domain and frequency-domain statistics aligned."""
     mean = mean.to(clip_tensor.device)
     std = std.to(clip_tensor.device)
     return (clip_tensor * std + mean).clamp(0.0, 1.0)
@@ -66,10 +65,9 @@ def main():
     clip_mean, clip_std = get_clip_norm_stats(preprocess)
     train_aug = build_train_transform(cfg["data"]["image_size"])
 
-    # Dual-tensor wiring fixed: raw_img is now reconstructed from clip_img via
-    # to_raw_rgb01() above (see that docstring) rather than needing
-    # ManifestDataset to return two tensors. evaluate.py, calibrate.py, and
-    # scripts/check_frequency_branch.py all reuse this same pattern now.
+    # Rebuild raw_img from clip_img with to_raw_rgb01() above instead of
+    # making ManifestDataset return two copies of each image. evaluate.py,
+    # calibrate.py, and scripts/check_frequency_branch.py use the same setup.
     train_ds = ManifestDataset(cfg["data"]["manifest_csv"], "train", preprocess, train_aug)
     val_ds = ManifestDataset(cfg["data"]["manifest_csv"], "val", preprocess, None)
 
@@ -78,18 +76,22 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=cfg["train"]["batch_size"], shuffle=False,
                              num_workers=cfg["train"].get("num_workers", 4))
 
-    # The frequency branch is a small CNN starting from random weights, fused
-    # against an ~88M-param pretrained CLIP branch that already produces a
-    # strong, low-loss signal almost immediately. check_frequency_branch.py's
-    # gradient check showed the frequency branch's gradient norm running
-    # ~65x smaller than the semantic head's under a single shared LR — with
-    # AdamW's per-parameter adaptive scaling this still under-trains it in
-    # practice (confirmed by a near-zero with/without ablation delta on the
-    # resulting checkpoint), a known "modality imbalance" pattern in
-    # multi-branch fusion. Give the frequency branch its own higher LR via a
-    # separate param group so its small gradients still translate into
-    # meaningful updates over the same epoch budget, rather than changing
-    # the architecture itself.
+    # The frequency branch is a small CNN trained from random weights, while
+    # the semantic branch uses a pretrained CLIP model with about 88M
+    # parameters and produces a strong, low-loss signal almost immediately.
+    #
+    # In check_frequency_branch.py, we found that the frequency branch's
+    # gradient norm was about 65x smaller than the semantic head's when both
+    # used the same learning rate. AdamW's per-parameter scaling doesn't
+    # fully make up for that gap, so the frequency branch still gets too
+    # little training. The near-zero difference between the with- and
+    # without-branch ablations in the resulting checkpoint supports the same
+    # conclusion.
+    #
+    # This kind of imbalance is common when a model combines different
+    # branches. Give the frequency branch its own higher learning rate so
+    # its smaller gradients can still produce useful updates within the
+    # same epoch budget, without changing the model architecture.
     freq_lr_mult = cfg["train"].get("freq_lr_multiplier", 1.0)
     freq_params = list(model.frequency.parameters())
     freq_param_ids = {id(p) for p in freq_params}
@@ -131,7 +133,7 @@ def main():
             opt.step()
             pbar.set_postfix(loss=float(loss))
 
-        # --- validation AUC each epoch ---
+        # Check validation AUC after each epoch.
         model.eval()
         all_probs, all_labels = [], []
         with torch.no_grad():

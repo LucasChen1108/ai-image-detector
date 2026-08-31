@@ -26,7 +26,7 @@ class HybridDetector(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(fusion_hidden, 1),
         )
-        # Learned temperature for calibration; keep >0 via softplus.
+        # Learn the calibration temperature, but keep it positive with softplus.
         self.raw_temperature = nn.Parameter(torch.tensor(0.0))
 
     def temperature(self):

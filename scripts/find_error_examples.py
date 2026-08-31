@@ -91,8 +91,8 @@ def main():
     print(f"\nTotal false positives (real predicted as AI, clean/no transform): {len(fp_all)} / {len(reals)}")
     print(f"Total false negatives (AI predicted as real, clean/no transform): {len(fn_all)} / {len(fakes)}")
 
-    # Per-generator breakdown of false negatives -- is the model missing one
-    # generator family more than others, or is it spread evenly?
+    # Break false negatives down by generator to see whether one family is
+    # causing most of the misses or whether the errors are spread evenly.
     generators = sorted(set(r["generator"] for r in fakes))
     fn_by_generator = {}
     for g in generators:

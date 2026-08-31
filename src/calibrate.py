@@ -2,7 +2,7 @@
 Temperature scaling: fit a single scalar temperature on the held-out val set
 so predict_proba() outputs are calibrated probabilities, not just a
 monotonic ranking score. Needed for thresholding and the error-analysis pass
-(judges want calibrated confidence, not just AUC).
+(calibrated confidence is more useful than AUC alone).
 
 Usage:
     python3 src/calibrate.py --config configs/baseline_clip.yaml --checkpoint checkpoints/best.pt

@@ -1,14 +1,13 @@
 model:
-  clip_model_name: "ViT-B-32"     # swap to "ViT-L-14" if compute allows
-  clip_pretrained: "openai"       # public, open-source weights
-  unfreeze_last_n_blocks: 0       # 0 = frozen backbone, linear-probe style
+  clip_model_name: "ViT-B-32"     # Use ViT-L-14 if the available compute allows it.
+  clip_pretrained: "openai"       # These weights are public and open source.
+  unfreeze_last_n_blocks: 0       # Zero keeps the backbone frozen.
 
 data:
-  # Real training data: WildFake (train/val/test splits) via Ngiam's
-  # scripts/fetch_dataset.py. SID_Set lives in this same manifest under
-  # split="heldout" and is NEVER read here -- ManifestDataset only loads
-  # "train"/"val" (see src/train.py), so it stays untouched by construction
-  # for use as the unseen-generator eval condition in evaluate.py.
+  # Train on the WildFake train, validation, and test splits created by
+  # scripts/fetch_dataset.py. SID_Set is in the same manifest with
+  # split="heldout", but ManifestDataset only loads "train" and "val" here,
+  # so the held-out generator stays untouched for evaluate.py.
   manifest_csv: "manifest/manifest.csv"
   image_size: 224
   apply_train_aug: true
@@ -20,24 +19,20 @@ train:
   weight_decay: 0.0001
   num_workers: 4
   ckpt_dir: "checkpoints"
-  # RESULT (documented, not reverted blindly): tried freq_lr_multiplier=5.0
-  # to fix the frequency branch's near-zero ablation contribution (see
-  # scripts/check_frequency_branch.py). It worked in the narrow sense that
-  # the branch stopped being inert -- the unseen_generator ablation delta
-  # went from +0.0044 (v1, no boost) to -0.0071 (v2, 5x boost) -- but the
-  # sign is negative: zeroing the frequency branch now IMPROVES
-  # unseen-generator AUC, i.e. the extra learning capacity went toward
-  # WildFake-specific frequency artifacts that hurt cross-generator
-  # transfer, not toward anything that generalizes. In-domain contribution
-  # stayed ~0 either way (-0.0010 boosted vs +0.0002 unboosted). Headline
-  # robustness-table AUCs were ~identical between v1/v2 since CLIP alone is
-  # already near-ceiling on this data, so the table alone won't show this --
-  # only the ablation delta does.
+  # We tried freq_lr_multiplier=5.0 to address the frequency branch's
+  # near-zero ablation contribution; see scripts/check_frequency_branch.py.
+  # The branch did start learning, but the unseen_generator ablation delta
+  # moved from +0.0044 without the boost to -0.0071 with the 5x boost. Since
+  # zeroing the branch now improves unseen-generator AUC, the extra capacity
+  # seems to have learned WildFake-specific frequency artifacts that hurt
+  # cross-generator transfer instead of learning a signal that generalizes.
+  # The in-domain contribution stayed close to zero (-0.0010 boosted versus
+  # +0.0002 unboosted), and the headline robustness AUCs were nearly the same
+  # because CLIP was already close to its ceiling on this data. The ablation
+  # delta is what exposes the difference.
   #
-  # Conclusion: undertraining was NOT the (whole) explanation for the
-  # frequency branch's low contribution; more capacity just found a
-  # non-transferable signal. Reverted to 1.0 (no boost) as the safer
-  # checkpoint. v2 kept at checkpoints/best_v2_freq_lr5x_negative_result.pt
-  # for reference / the write-up; v1 is checkpoints/best.pt (the one
-  # in active use).
+  # More capacity didn't solve the frequency branch's low contribution, so
+  # we returned to 1.0 as the safer setting. We kept v2 at
+  # checkpoints/best_v2_freq_lr5x_negative_result.pt for reference, while
+  # checkpoints/best.pt remains the active v1 checkpoint.
   freq_lr_multiplier: 1.0

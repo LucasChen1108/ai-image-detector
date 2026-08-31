@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Ensure repo root is on sys.path so `import src...` works when run from scripts/
+# Add the repo root to sys.path so imports work when this runs from scripts/.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -43,22 +43,22 @@ def main():
     B = 4
     H = W = 224
 
-    # Dummy semantic embedding that would normally come from CLIP
+    # Stand in for the embedding that CLIP would normally produce.
     clip_out_dim = 256
     sem = torch.randn(B, clip_out_dim, dtype=torch.float32, device=device)
 
-    # Create a random RGB batch in [0,1] for the frequency branch
+    # Make a random RGB batch in the [0, 1] range for the frequency branch.
     raw_rgb_01 = torch.rand(B, 3, H, W, dtype=torch.float32, device=device)
 
-    # Build and run real frequency branch
+    # Build and run the actual frequency branch.
     freq_branch = FrequencyBranch(input_size=H, out_dim=128).to(device)
     freq_feats = freq_branch(raw_rgb_01)
 
-    # Fusion head
+    # Build the fusion head.
     fusion, raw_temp = build_fusion(clip_out_dim=clip_out_dim, freq_out_dim=freq_feats.shape[1])
     fusion = fusion.to(device)
 
-    # Concatenate and forward
+    # Join both outputs and run the forward pass.
     concat = torch.cat([sem, freq_feats], dim=-1)
     logits = fusion(concat).squeeze(-1)
     temp = softplus(raw_temp)

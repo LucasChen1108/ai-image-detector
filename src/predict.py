@@ -1,9 +1,7 @@
 """
-Standalone inference script -- required deliverable per the challenge brief
-(5.5.2): "A script that takes an image directory as input and outputs a
-confidence score for each image, indicating the likelihood that it is
-AIGC-generated. The output should be a JSON file containing image_path and
-pred for each image."
+Standalone inference script that takes an image directory as input and
+writes a confidence score for each image to a JSON file with image_path and
+pred fields.
 
 Unlike train.py/evaluate.py/calibrate.py, this does NOT read a manifest CSV
 or require labels -- it just walks a directory of images and scores each
@@ -13,7 +11,7 @@ ManifestDataset / the rest of the pipeline).
 
 Usage:
     python3 src/predict.py --input_dir path/to/images --out predictions.json
-    # or via the run.sh entrypoint:
+    # Or run it through run.sh:
     bash run.sh predict --input_dir path/to/images --out predictions.json
 """
 import argparse

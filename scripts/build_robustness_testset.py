@@ -4,8 +4,7 @@ condition (JPEG q90/70/50/30, blur sigma=2, crop 80%), plus writes a combined
 manifest whose `split` column holds the condition name — this is what
 src/evaluate.py reads.
 
-This is included (per competition rules: "include generation scripts for
-reproducibility") so anyone can regenerate the exact robustness test set
+Anyone can run this script to regenerate the exact robustness test set
 byte-for-byte.
 
 Usage:
@@ -52,13 +51,12 @@ def main():
                 "generator": row["generator"], "split": cond_name,
             })
 
-    # unseen_generator: reuse the *original* clean images from whatever
-    # source the data-prep manifest already held out of training entirely
-    # (fetch_dataset.py tags these rows split="heldout" — SID_Set is the
-    # held-out generator in the current WildFake+SID_Set manifest). We map
-    # that manifest split name to the "unseen_generator" condition name that
-    # evaluate.py looks for, since the two scripts used different vocab for
-    # the same concept.
+    # For unseen_generator, use the original clean images from the source
+    # that the data-prep manifest kept completely out of training.
+    # fetch_dataset.py marks these rows as split="heldout"; in the current
+    # WildFake+SID_Set manifest, those rows come from the held-out generator.
+    # The manifest and evaluate.py use different names for this condition, so
+    # map "heldout" to "unseen_generator" here.
     held = df[df["split"] == "heldout"]
     if held.empty:
         print("warning: no rows with split=='heldout' in source manifest — "

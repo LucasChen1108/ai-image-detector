@@ -2,7 +2,7 @@
 
 ## Robustness summary
 
-We ran this on our held-out `test` split (WildFake's ADM, StyleGAN3, VQVAE generators) plus `unseen_generator`, which is SID_Set -- a generator the model never saw during training. Checkpoint is `checkpoints/best.pt` (`freq_lr_multiplier: 1.0`, the default augmentation recipe -- see Finding 3 for why we tried a widened version and reverted it, 10 epochs, WildFake only). 15 conditions total, covering all six transform categories from the brief (JPEG, Gaussian Blur, Resize, Gaussian Noise, Color Jitter, Center Crop) instead of just the subset the slide deck happened to show as an example.
+We ran this on our held-out `test` split (WildFake's ADM, StyleGAN3, VQVAE generators) plus `unseen_generator`, which is SID_Set -- a generator the model never saw during training. Checkpoint is `checkpoints/best.pt` (`freq_lr_multiplier: 1.0`, the default augmentation recipe -- see Finding 3 for why we tried a widened version and reverted it, 10 epochs, WildFake only). There are 15 conditions in total, covering JPEG, Gaussian blur, resize, Gaussian noise, color jitter, and center crop.
 
 | Condition | Acc. | AUC |
 |---|---|---|
@@ -23,7 +23,7 @@ We ran this on our held-out `test` split (WildFake's ADM, StyleGAN3, VQVAE gener
 | crop_80pct | 0.81 | 0.90 |
 | unseen_generator | 0.48 | 0.51 |
 
-Final Score (0.5·AUC_clean + 0.5·AUC_robust, robust = mean of the 14 post-processing conditions above, not counting `unseen_generator`) comes out to about **0.915**. We're happy with this half of the results -- every post-processing condition stays above 0.82 AUC, and it degrades the way you'd expect as each transform gets harsher (blur goes 0.93 → 0.91 → 0.82 as sigma climbs, for example). `resize_0.25x` and `noise_sigma0.10` are the weakest at 0.82 each -- we tried to fix specifically those two and it didn't go well, see Finding 3.
+Overall score (0.5·AUC_clean + 0.5·AUC_robust, robust = mean of the 14 post-processing conditions above, not counting `unseen_generator`) comes out to about **0.915**. We're happy with this half of the results -- every post-processing condition stays above 0.82 AUC, and it degrades the way you'd expect as each transform gets harsher (blur goes 0.93 → 0.91 → 0.82 as sigma climbs, for example). `resize_0.25x` and `noise_sigma0.10` are the weakest at 0.82 each -- we tried to fix specifically those two and it didn't go well, see Finding 3.
 
 ## Representative false positives and false negatives
 
@@ -93,7 +93,7 @@ Accuracy degrades gracefully under JPEG recompression, blur, and cropping —
 AUC stays above 0.82 even at JPEG q30 and blur σ=2, the two harshest
 conditions tested. This is the direct result of training-time augmentation
 (`src/data/augmentations.py`) explicitly simulating these corruptions per the
-SAFE (KDD 2025) and DDA (NeurIPS 2025) insights cited in the challenge brief.
+SAFE (KDD 2025) and DDA (NeurIPS 2025) insights.
 
 `unseen_generator` is a different story: AUC 0.51, accuracy 0.48 — chance
 level. The model cannot distinguish real images from SID_Set's diffusion
@@ -102,9 +102,8 @@ include ADM, itself a diffusion model). This means the failure isn't simply
 "GANs vs diffusion" — it's specific to SID_Set's particular generator
 fingerprint, consistent with the literature on detector overfitting to
 generator-specific artifacts rather than a general "AI-generated-ness"
-signal. This is expected in kind (the challenge brief names cross-generator
-generalization as one of the two defining hard problems, alongside
-robustness) but more severe in degree than we'd hoped for.
+signal. Cross-generator generalization is a separate problem from robustness,
+and the failure here is more severe than we'd hoped for.
 
 ## Finding 2: the frequency branch's role in this failure
 
@@ -160,7 +159,7 @@ So undertraining wasn't the (whole) explanation for why the frequency branch was
 
 ## Finding 3: widening augmentation to match eval was tried, and reverted
 
-After expanding the robustness eval to the full brief transform grid
+After expanding the robustness eval to the full transform grid
 (Finding above's table), `resize_0.25x` and `noise_sigma0.10` came out as
 the weakest post-processing conditions (0.82 AUC each). The training-time
 augmenter (`RedistributionAugment`) had a real gap that looked like the
@@ -181,7 +180,7 @@ then retrained. Result: worse, not better, across nearly the whole table.
 | noise_sigma0.02 | 0.91 | 0.90 |
 | noise_sigma0.05 | 0.87 | 0.85 |
 | noise_sigma0.10 | 0.82 | **0.79** |
-| Final Score | ≈0.915 | 0.9108 |
+| Overall score | ≈0.915 | 0.9108 |
 
 `resize_0.25x` moved a hair in the right direction; `noise_sigma0.10` --
 the condition this change specifically targeted -- got measurably worse,
@@ -191,29 +190,27 @@ Our best guess why: `random.choice()` over the op list means each op fires with 
 
 We reverted to the pre-alignment augmentation recipe. `checkpoints/best.pt` is that reverted (v3) checkpoint; the widened-augmentation one is kept around at `checkpoints/best_v4_aug_alignment_negative_result.pt` in case it's useful later. Same as the LR-boost experiment in Finding 2, we're writing this up rather than quietly deleting it, because the fix that seemed obviously right (train on harder conditions than you're evaluated on) had a side effect we didn't anticipate that outweighed the intended benefit, at least at these specific numbers. A more careful version of the same idea -- reweighting how often each op gets picked instead of just adding a new option to an unweighted choice, or only raising `noise_sigma`'s upper bound without touching the lower one -- might still work. We just didn't have time to chase it further given how small the gap we were trying to close actually was.
 
-## Trade-offs (per the brief's own framing)
+## Trade-offs
 
 - **Robustness vs. clean accuracy:** not really a trade-off here — the
   augmentation pipeline achieves both simultaneously (clean 0.94, JPEG q30
   0.89).
 - **Generalization vs. specialization:** the core limitation of this
-  submission. The model is well-specialized to WildFake's generator family
+  model. The model is well-specialized to WildFake's generator family
   and does not generalize to SID_Set's diffusion outputs. Diagnosed as a
   representation gap (verified via ablation), not a fusion/architecture bug.
 - **Complexity vs. feasibility:** the frequency branch adds real complexity
   for a currently-negligible in-domain benefit and a measured *cost* on
   cross-generator generalization once given more learning capacity. Kept in
-  the architecture (per the brief's hybrid-design guidance and because it
-  does no harm at `freq_lr_multiplier: 1.0`), but its value is not yet
-  demonstrated on this dataset.
+  the architecture because it does no harm at `freq_lr_multiplier: 1.0`, but
+  its value is not yet demonstrated on this dataset.
 
 ## What we'd do with more time
 
 **Generalization (Finding 2):** broaden training-generator diversity rather
-than tune optimization further — per the brief's own SAFE/DDA-derived
-guidance ("augmentation + data alignment > architecture tricks"), the fix
-for a representation gap is more representative training data, not a
-different learning rate. Concretely: add a modest slice of one or two
+than tune optimization further. A representation gap needs more
+representative training data, not a different learning rate. Concretely: add
+a modest slice of one or two
 additional diffusion-generator subsets from
 [GenImage](https://github.com/GenImage-Dataset/GenImage) (a public
 benchmark covering Stable Diffusion, GLIDE, VQDM, Midjourney, and Wukong,
@@ -233,9 +230,7 @@ the more promising next attempt, not a reason to abandon the idea
 entirely.
 
 **Trust & calibration:** add a false-positive-rate discussion at a chosen
-calibrated-probability threshold (the brief's "Technical Goal" section
-names false positives explicitly, alongside robustness and generalization,
-as an expected trade-off discussion). `src/calibrate.py` now produces
+calibrated-probability threshold. `src/calibrate.py` now produces
 calibrated probabilities via temperature scaling; a short precision/recall
 or false-positive-rate table at threshold=0.5 would close this out cheaply
 once the active checkpoint is calibrated.

@@ -31,8 +31,8 @@ to read. This checkpoint validates that the pipeline RUNS. Do not tune
 against its AUC. See docs/PLAN.md §2.
 
 Usage:
-    python3 scripts/build_cifake_manifest.py                  # 2k/class smoke set
-    python3 scripts/build_cifake_manifest.py --per-class-train 0   # use all 50k/class
+    python3 scripts/build_cifake_manifest.py                  # Build the 2k-per-class smoke set.
+    python3 scripts/build_cifake_manifest.py --per-class-train 0   # Use all 50k images per class.
 """
 import argparse
 import random
@@ -87,7 +87,7 @@ def main():
     rng = random.Random(args.seed)
     rows = []
 
-    # --- train/ -> train + val, carved per class so both stay balanced ---
+    # Split train/ into balanced train and validation sets.
     for folder, label, generator in [("REAL", 0, "real"), ("FAKE", 1, args.generator_name)]:
         pool = sample(rng, list_images(root / "train" / folder), args.per_class_train)
         rng.shuffle(pool)
@@ -98,7 +98,7 @@ def main():
                 "split": "val" if i < n_val else "train",
             })
 
-    # --- test/ -> test (the dataset's own held-out split) ---
+    # Keep test/ as the dataset's own held-out test split.
     for folder, label, generator in [("REAL", 0, "real"), ("FAKE", 1, args.generator_name)]:
         for p in sample(rng, list_images(root / "test" / folder), args.per_class_test):
             rows.append({
@@ -108,7 +108,7 @@ def main():
 
     df = pd.DataFrame(rows, columns=["path", "label", "generator", "split"])
 
-    # --- verification: fail loudly here, not inside a DataLoader worker ---
+    # Check the manifest now, so errors appear here instead of inside a DataLoader worker.
     missing = [p for p in df["path"] if not (REPO / p).exists()]
     if missing:
         raise SystemExit(f"{len(missing)} manifest paths do not exist, e.g. {missing[:3]}")

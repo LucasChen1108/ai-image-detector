@@ -52,7 +52,7 @@ REPO = Path(__file__).resolve().parents[1]
 SHARD_URL = ("https://huggingface.co/datasets/saberzl/SID_Set/resolve/main/"
              "data/validation-{:05d}-of-00034.parquet")
 
-LABEL_MAP = {                       # dataset label -> (our label, generator)
+LABEL_MAP = {                       # Map each dataset label to our label and generator.
     0: (0, "real"),
     1: (1, "sid_synthetic"),
     2: (1, "sid_tampered"),
@@ -89,7 +89,7 @@ def main():
         for rg in range(pf.metadata.num_row_groups):
             if sum(quota.values()) == 0:
                 break
-            # cheap: only the two small columns, no image bytes
+            # Read only the two small columns; there is no need to fetch image bytes.
             t = pf.read_row_group(rg, columns=["img_id", "label"])
             ids = t.column("img_id").to_pylist()
             labs = t.column("label").to_pylist()

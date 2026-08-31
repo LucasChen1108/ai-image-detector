@@ -2,10 +2,10 @@
 Evaluation: computes AUC + Accuracy per robustness condition -- clean, JPEG
 q90/70/50/30, Gaussian blur sigma=0.5/1.0/2.0, resize 0.5x/0.25x (thumbnail),
 Gaussian noise sigma=0.02/0.05/0.10, color jitter, center crop 80%, plus
-unseen_generator -- matching the challenge brief's transform grid (5.2).
+unseen_generator.
 Prints/saves a compact markdown table and computes:
 
-    Final Score = 0.50 * AUC_clean + 0.50 * AUC_robust
+    Overall score = 0.50 * AUC_clean + 0.50 * AUC_robust
 
 where AUC_robust = mean AUC across all non-clean, non-unseen-generator
 conditions (unseen-generator is reported separately since it measures a
@@ -111,7 +111,7 @@ def main():
     print("|---|---|---|")
     for cond, r in results.items():
         print(f"| {cond} | {r['acc']:.2f} | {r['auc']:.2f} |")
-    print(f"\nFinal Score (0.5*AUC_clean + 0.5*AUC_robust) = {final_score}")
+    print(f"\nOverall score (0.5*AUC_clean + 0.5*AUC_robust) = {final_score}")
 
     with open(args.out, "w") as f:
         json.dump({"results": results, "final_score": final_score}, f, indent=2)

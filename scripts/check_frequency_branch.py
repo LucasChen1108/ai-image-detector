@@ -25,14 +25,14 @@ Two checks:
      check stays self-contained and doesn't touch shared model code.
 
 Usage:
-    # gradient check only (no checkpoint needed, uses fresh/random weights)
+    # This only checks gradients, so it uses fresh random weights.
     python3 scripts/check_frequency_branch.py --config configs/baseline_clip.yaml --mode gradient
 
-    # ablation (needs a trained checkpoint)
+    # This ablation needs a trained checkpoint.
     python3 scripts/check_frequency_branch.py --config configs/baseline_clip.yaml --mode ablation --checkpoint checkpoints/best.pt
 
-    # ablation against a specific condition from the robustness manifest, e.g.
-    # the held-out-generator rows (build scripts/build_robustness_testset.py first)
+    # Compare one condition from the robustness manifest, such as the
+    # held-out-generator rows. Build the test set first if it isn't ready.
     python3 scripts/check_frequency_branch.py --mode ablation --checkpoint checkpoints/best.pt \
         --manifest data/robustness_manifest.csv --split unseen_generator
 """

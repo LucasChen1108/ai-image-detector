@@ -2,15 +2,15 @@
 CLIP visual encoder as the high-level "semantic" branch.
 
 Uses open_clip so the backbone is verifiably open-source/public-weights
-(competition requirement). Default ViT-B-32 (~151M params); ViT-L-14 (~428M)
-is a drop-in swap in configs/baseline_clip.yaml if you have the compute — both
-are comfortably under the 2B-parameter cap.
+to keep the backbone public and reproducible. Default ViT-B-32 (~151M params);
+ViT-L-14 (~428M) is a drop-in swap in configs/baseline_clip.yaml if you have
+the compute — both are comfortably under the 2B-parameter cap.
 
 We freeze the backbone by default and only train a small projection head,
-which (a) trains fast on limited hackathon compute/time, and (b) keeps CLIP's
+which (a) trains fast on limited compute/time, and (b) keeps CLIP's
 broad semantic generalization intact rather than overfitting it to the
 training generators — directly serving the "generalization vs specialization"
-trade-off called out in the brief. Unfreezing the last N transformer blocks
+trade-off. Unfreezing the last N transformer blocks
 is exposed as an option for a later ablation if time allows.
 """
 import open_clip
@@ -22,19 +22,18 @@ class ClipSemanticBranch(nn.Module):
     def __init__(self, model_name: str = "ViT-B-32", pretrained: str = "openai",
                  unfreeze_last_n_blocks: int = 0, out_dim: int = 256):
         super().__init__()
-        # OpenAI's original CLIP checkpoints were trained with QuickGELU
-        # (x * sigmoid(1.702x)), not the standard GELU open_clip defaults to.
-        # Loading 'openai' weights without forcing this produces a silent
-        # activation-function mismatch (open_clip warns "QuickGELU mismatch")
-        # that subtly degrades the visual encoder relative to how it was
-        # actually trained. LAION-trained checkpoints (laion2b/laion400m)
-        # use standard GELU and should NOT force this.
+        # OpenAI's original CLIP checkpoints use QuickGELU, which is
+        # x * sigmoid(1.702x), instead of the standard GELU that open_clip
+        # uses by default. If we load the OpenAI weights without selecting
+        # QuickGELU, the visual encoder uses the wrong activation and loses
+        # a little accuracy. LAION checkpoints use standard GELU, so leave
+        # QuickGELU off for those models.
         force_quick_gelu = "openai" in pretrained.lower()
         model, _, preprocess = open_clip.create_model_and_transforms(
             model_name, pretrained=pretrained, force_quick_gelu=force_quick_gelu
         )
         self.visual = model.visual
-        self.preprocess = preprocess  # hand this to the Dataset
+        self.preprocess = preprocess  # The dataset uses this image transform
 
         for p in self.visual.parameters():
             p.requires_grad = False

@@ -1,7 +1,7 @@
 """
 Training-time augmentation pipeline: "simulate redistribution during training."
 
-Mental model (from the challenge brief): if a transformation can happen to a
+Mental model: if a transformation can happen to a
 real feed after upload (recompression, re-screenshotting, resizing, cropping
 for a thumbnail, color correction), it MUST happen in the training pipeline,
 or the model will learn signals that don't survive contact with the real world.
@@ -59,7 +59,7 @@ def add_sensor_noise(img: Image.Image, sigma: float = 3.0) -> Image.Image:
 
 def gaussian_noise_01(img: Image.Image, sigma: float) -> Image.Image:
     """Additive Gaussian noise with sigma expressed on a normalized [0,1]
-    pixel scale, matching the challenge brief's parameterization (sigma =
+    pixel scale, matching the evaluation parameterization (sigma =
     0.02 / 0.05 / 0.10) directly -- unlike add_sensor_noise above, which
     uses a raw 0-255 scale for the training-time augmenter. Real-world
     analog: low-light sensor noise."""
@@ -71,7 +71,7 @@ def gaussian_noise_01(img: Image.Image, sigma: float) -> Image.Image:
 
 def downscale_upscale(img: Image.Image, scale: float) -> Image.Image:
     """Resize down to `scale` of original resolution, then back up to the
-    original size -- the brief's "Resize" condition (scale 0.5x / 0.25x
+    original size -- the evaluation "Resize" condition (scale 0.5x / 0.25x
     then upscale), real-world analog: thumbnail generation. Distinct from
     random_crop_resize (which crops a sub-region) -- this shrinks the whole
     frame, destroying fine detail uniformly rather than at the edges."""
@@ -82,14 +82,14 @@ def downscale_upscale(img: Image.Image, scale: float) -> Image.Image:
 
 def color_jitter_fixed(img: Image.Image, factor: float = 1.2) -> Image.Image:
     """Deterministic +/-20% brightness/contrast/saturation shift -- the
-    brief's "Color Jitter" condition. Fixed (not random) because eval
+    evaluation's "Color Jitter" condition. Fixed (not random) because eval
     conditions must be reproducible for a fixed test set, unlike the
     training-time T.ColorJitter which is intentionally randomized per
     sample. Real-world analog: filter apps, auto-enhance."""
     from PIL import ImageEnhance
     img = ImageEnhance.Brightness(img).enhance(factor)
     img = ImageEnhance.Contrast(img).enhance(factor)
-    img = ImageEnhance.Color(img).enhance(factor)  # PIL's "Color" = saturation
+    img = ImageEnhance.Color(img).enhance(factor)  # PIL uses Color for saturation
     return img
 
 
@@ -112,7 +112,7 @@ class RedistributionAugment:
     RESULT (documented, not silently dropped -- see docs/error_analysis.md
     Finding 3): we tried widening noise_sigma to a (2.0, 30.0) range and
     adding a "resize" op, aimed at the two weakest post-processing
-    conditions after expanding EVAL_CONDITIONS to the full brief transform
+    conditions after expanding EVAL_CONDITIONS to the full transform
     grid. It made things worse, not better, likely because adding a 7th op
     to an unweighted random.choice diluted how often every other op fires,
     and widening noise_sigma_range shifted sampling mass toward noise
@@ -174,15 +174,14 @@ def build_train_transform(image_size: int = 224):
     return TrainTransform(image_size)
 
 
-# Fixed, named conditions for the EVAL-time robustness test set. Keep this in
-# sync with scripts/build_robustness_testset.py and src/evaluate.py so the
-# robustness table columns line up with what the slide deck expects.
-# Named per the challenge brief's transform grid (5.2): JPEG q=90/70/50/30,
-# Gaussian Blur sigma=0.5/1.0/2.0, Resize 0.5x/0.25x-then-upscale, Gaussian
-# Noise sigma=0.02/0.05/0.10, Color Jitter +/-20%, Center Crop 80%. The brief
-# says "a subset" is acceptable, but we cover all six categories so the
-# robustness table matches the official grid rather than only the slide
-# deck's illustrative subset.
+# These are the fixed conditions for the robustness test set. Keep this list
+# aligned with scripts/build_robustness_testset.py and src/evaluate.py so the
+# result columns stay in the order expected by the slide deck.
+#
+# The transform grid uses JPEG at q=90/70/50/30,
+# Gaussian blur at sigma=0.5/1.0/2.0, resize at 0.5x and 0.25x-then-upscale,
+# Gaussian noise at sigma=0.02/0.05/0.10, +/-20% color jitter, and an 80%
+# center crop. We cover all six categories so the table uses the full grid.
 EVAL_CONDITIONS = {
     "clean": lambda img: img,
     "jpeg_q90": lambda img: jpeg_recompress(img, 90),

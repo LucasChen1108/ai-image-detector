@@ -61,14 +61,14 @@ def fetch_member(session, url, zi):
     own handle would mean re-reading a 493k-entry central directory per
     worker. Reading the local header directly sidesteps both problems.
     """
-    pad = 256  # local header extra field can differ from the central one
+    pad = 256  # The local header's extra field may differ from the central one.
     start = zi.header_offset
     data = range_get(session, url, start,
                      start + 30 + len(zi.filename.encode()) + pad + zi.compress_size)
     name_len, extra_len = struct.unpack("<HH", data[26:30])
     off = 30 + name_len + extra_len
     payload = data[off:off + zi.compress_size]
-    if len(payload) < zi.compress_size:  # pad guess was short
+    if len(payload) < zi.compress_size:  # The padding guess was too small.
         data = range_get(session, url, start + off, start + off + zi.compress_size)
         payload = data[:zi.compress_size]
     if zi.compress_type == zipfile.ZIP_DEFLATED:
@@ -208,7 +208,7 @@ def main():
             w.writerows(rows)
         print(f"\nrecorded sha256 for {done} images into {args.spec}")
 
-    # manifest.csv is what train.py/evaluate.py actually read
+    # train.py and evaluate.py read this manifest.
     man = REPO / args.manifest_out
     man.parent.mkdir(parents=True, exist_ok=True)
     with open(man, "w", newline="") as f:

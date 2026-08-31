@@ -4,8 +4,7 @@ Manifest-driven dataset loader.
 We deliberately do NOT hardcode a folder-per-class layout, because the
 eval protocol needs a `generator` column to hold out entire generators for
 cross-generator testing (train on generators {A, B, C}, test on generator D
-that never appeared in training — the real generalization test per the
-brief).
+that never appeared in training).
 
 Expected manifest CSV columns:
     path,label,generator,split
@@ -45,8 +44,8 @@ class ManifestDataset(Dataset):
         if include_only_generators:
             df = df[df["generator"].isin(include_only_generators)].reset_index(drop=True)
         self.df = df
-        self.preprocess = preprocess  # CLIP's image preprocess (resize/normalize)
-        self.train_augment = train_augment  # RedistributionAugment, train split only
+        self.preprocess = preprocess  # CLIP's resize-and-normalize transform
+        self.train_augment = train_augment  # Only used for the training split
         self.split = split
 
     def __len__(self):
@@ -60,12 +59,11 @@ class ManifestDataset(Dataset):
         tensor = self.preprocess(img)
         return {
             "image": tensor,
-            # Explicit float32, not a bare Python float: PyTorch's default
-            # batch collate promotes a list of Python floats to float64
-            # ("double"), and Apple's MPS backend cannot move a float64
-            # tensor onto the GPU at all (`.to("mps")` raises TypeError).
-            # This bites both train.py and calibrate.py, which is why it's
-            # fixed here once rather than patched in each consumer.
+            # Keep this as an explicit float32 tensor. PyTorch can turn a
+            # list of Python floats into float64 during batch collation, and
+            # Apple's MPS backend can't move a float64 tensor to the GPU.
+            # Both train.py and calibrate.py use this dataset, so fixing it
+            # here keeps the same problem from showing up in two places.
             "label": torch.tensor(row["label"], dtype=torch.float32),
             "generator": str(row["generator"]),
         }

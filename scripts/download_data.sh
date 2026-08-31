@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# Dataset acquisition — one command, run from the repo root.
+# Download the dataset with one command from the repo root.
 #
 #   bash scripts/download_data.sh
 #
-# Pulls the exact images listed in manifest/data_spec.csv and writes
-# manifest/manifest.csv. Everyone on the team ends up with byte-identical
-# data because the spec pins each image and records its sha256.
+# Fetch the exact images listed in manifest/data_spec.csv and write them to
+# manifest/manifest.csv. The spec pins every image and records its SHA-256,
+# so everyone gets the same bytes.
 #
-# WildFake is 1.29 TB and its download unit is a whole archive, so a normal
-# clone or `git lfs pull` is not viable. We instead read each archive's index
-# remotely and fetch only the members we need over HTTP range requests —
-# under 1 GB total, no ModelScope account required. See
-# scripts/wildfake_remote.py for the mechanism.
+# WildFake is 1.29 TB, and each download normally pulls a whole archive, so
+# cloning it or running `git lfs pull` isn't practical. We read each archive's
+# index remotely and fetch only the needed members with HTTP range requests.
+# The total download stays under 1 GB, and no ModelScope account is needed.
+# See scripts/wildfake_remote.py for the details.
 #
-# Competition rules require public/licensed datasets and reproducible
-# acquisition scripts (docs/PLAN.md §6). WildFake is Apache-2.0; nothing is
-# redistributed here — this fetches from the official source.
+# WildFake uses Apache-2.0, and this script fetches it from the official
+# source without redistributing it here.
 set -e
 cd "$(dirname "$0")/.."
 

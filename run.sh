@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Single entrypoint required by the competition rules ("run script").
+# This is the single entrypoint for the project.
 #
 # Usage:
-#   bash run.sh train           # train the hybrid detector
-#   bash run.sh calibrate       # fit temperature scaling on the val set
-#   bash run.sh build_testset   # materialize the robustness test set
-#   bash run.sh evaluate        # run full robustness eval + Final Score
+#   bash run.sh train           # Train the hybrid detector.
+#   bash run.sh calibrate       # Fit temperature scaling on the validation set.
+#   bash run.sh build_testset   # Build the robustness test set.
+#   bash run.sh evaluate        # Run the full robustness evaluation and overall score.
 #   bash run.sh predict --input_dir DIR [--out predictions.json]
-#                                # score every image in DIR, writing
-#                                # [{"image_path": ..., "pred": ...}, ...]
-#   bash run.sh find_errors     # pull representative false positive /
-#                                # false negative examples for the error
-#                                # analysis note (docs/examples/, docs/error_examples.json)
+#                               # Score every image in DIR and write
+#                               # [{"image_path": ..., "pred": ...}, ...].
+#   bash run.sh find_errors     # Find representative false positives and
+#                               # false negatives for the error analysis note
+#                               # in docs/examples/ and docs/error_examples.json.
 set -e
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD/src:$PYTHONPATH"

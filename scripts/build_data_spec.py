@@ -47,7 +47,7 @@ from wildfake_remote import HttpFile, resolve  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 
-# (key, archive, member filter, label, generator, domain)
+# Each entry stores: key, archive, member filter, label, generator, and domain.
 SOURCES = [
     ("adm",       "Images/Diffusion_based/ADM.zip", "ADM/imgs/",      1, "adm",       "imagenet"),
     ("vqvae",     "Images/Other_based.zip",         "/VQVAE/tt-coco/", 1, "vqvae",     "coco"),

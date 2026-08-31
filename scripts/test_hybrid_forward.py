@@ -23,7 +23,7 @@ class DummySemantic(nn.Module):
     def __init__(self, out_dim=256):
         super().__init__()
         self.out_dim = out_dim
-        # simple preprocess placeholder
+        # Use a small placeholder instead of the real image preprocessing.
         self.preprocess = lambda img: img
 
     def forward(self, x):
@@ -41,14 +41,14 @@ def main():
     H = W = 224
 
     model = HybridDetector(clip_model_name='ViT-B-32', clip_pretrained='openai')
-    # Replace semantic branch with the dummy so we don't download CLIP
+    # Use the dummy semantic branch so this test doesn't download CLIP.
     model.semantic = DummySemantic(out_dim=256)
     model.to(device)
 
-    # Build a realistic frequency branch already present in model
-    # (HybridDetector constructs one) — we will use the model as-is.
+    # HybridDetector already creates the frequency branch, so use that real
+    # branch without changing the model.
 
-    # Dummy inputs: clip_input is not used by DummySemantic but must have correct shape
+    # DummySemantic ignores clip_input, but the tensor still needs the right shape.
     clip_input = torch.zeros(B, 3, H, W, dtype=torch.float32, device=device)
     raw_rgb_01 = torch.rand(B, 3, H, W, dtype=torch.float32, device=device)
 
